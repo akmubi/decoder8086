@@ -106,12 +106,12 @@ uint decoder_mov_rm(uint8_t *image, uint offset, uint size)
 
 	d   = (op[0] >> 1) & 0b1;
 	w   = op[0]        & 0b1;
-	mod = (op[1] >> 6) & 0b111;
+	mod = (op[1] >> 6) & 0b11;
 	reg = (op[1] >> 3) & 0b111;
 	r_m = op[1]        & 0b111;
 
 	if (mod != 0b11) {
-		fprintf(stderr, "; 0x%08X: MOD = %02u, not supported (yet)\n",
+		fprintf(stderr, "; 0x%08X: mov: MOD = %02u not handled\n",
 		        offset, (mod >> 1) * 10 + (mod & 1) * 1);
 		goto finish_decoder_mov_rm;
 	}
