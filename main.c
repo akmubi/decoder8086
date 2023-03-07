@@ -60,13 +60,12 @@ static enum instruction identify_inst(uint8_t *image, uint offset);
 
 int main(int argc, char *argv[])
 {
-	uint8_t  opcode;
 	size_t   nread;
 	size_t   size;
 	uint     offset;
 
 	FILE    *asm_file;
-	uint8_t *image, *iter;
+	uint8_t *image;
 	enum instruction inst;
 
 	if (argc != 2) {
@@ -154,14 +153,19 @@ uint decode_unknown(uint8_t *image, uint offset, uint size)
 	exit(EXIT_FAILURE);
 }
 
-uint decode_mov_rm_reg (uint8_t *image, uint offset, uint size)
+uint decode_mov_rm_reg(uint8_t *image, uint offset, uint size)
 {
-	uint8_t d, w, mod, reg, r_m;
-	uint8_t dest, src;
-	uint8_t *inst = image + offset;
+	int  len;
+	char ea_str[64];
+	char *first_op, *second_op, *tmp_op;
 
-	if (offset + 2 > size) {
-		goto finish_mov_rm_reg;
+	uint8_t d, w, mod, reg, r_m;
+	uint8_t *inst = image + offset;
+	uint16_t tmp;
+
+	offset += 2;
+	if (offset > size) {
+		return offset;
 	}
 
 	d   = (inst[0] >> 1) & 0b1;
@@ -171,45 +175,73 @@ uint decode_mov_rm_reg (uint8_t *image, uint offset, uint size)
 	reg = (inst[1] >> 3) & 0b111;
 	r_m = (inst[1] >> 0) & 0b111;
 
+	first_op  = registers[(w << 3) | reg];
+	second_op = registers[(w << 3) | r_m];
+
 	if (mod != 0b11) {
-		fprintf(stderr, "; 0x%08X: mov: MOD = %02u not handled\n",
-		        offset, (mod >> 1) * 10 + (mod & 1) * 1);
-		goto finish_mov_rm_reg;
+		tmp = (inst[3] << 8) | inst[2];
+		offset += 2;
+
+		if (mod == 0b00 && r_m == 0b110) {
+			len = snprintf(ea_str, sizeof(ea_str), "[%u]", tmp);
+		} else {
+			if (mod == 0b01) {
+				tmp &= 0x00FF;
+				offset--;
+			} else if (mod == 0b00) {
+				tmp = 0;
+				offset -= 2;
+			}
+
+			len = snprintf(ea_str, sizeof(ea_str), "[%s",
+			               ea_base[r_m]);
+			if (tmp > 0) {
+				len += snprintf(ea_str + len,
+				                sizeof(ea_str) - len, " + %u",
+				                tmp);
+			}
+
+			len += snprintf(ea_str + len, sizeof(ea_str) - len,
+			                "]");
+		}
+
+		second_op = ea_str;
 	}
 
-	// determine which field is destination and which is source
-	src = dest = (w << 3);
-	if (d) {
-		dest |= reg;
-		src  |= r_m;
-	} else {
-		dest |= r_m;
-		src  |= reg;
+	if (!d) {
+		tmp_op    = first_op;
+		first_op  = second_op;
+		second_op = tmp_op;
 	}
 
-	printf("mov %s, %s\n", registers[dest], registers[src]);
+	printf("mov %s, %s", first_op, second_op);
+	printf(" ; d: %u, w: %u, mod: %u, reg: %u, r/m: %u, off: 0x%X", d, w, mod, reg, r_m, offset);
+	printf("\n");
 
-finish_mov_rm_reg:
-	return offset + 2;
+	return offset;
 }
 
-uint decode_mov_imm_rm (uint8_t *image, uint offset, uint size)
+uint decode_mov_imm_rm(uint8_t *image, uint offset, uint size)
 {
+	(void)image; (void)offset; (void)size;
 	return offset;
 }
 
 uint decode_mov_imm_reg(uint8_t *image, uint offset, uint size)
 {
+	(void)image; (void)offset; (void)size;
 	return offset;
 }	
 
 uint decode_mov_mem_acc(uint8_t *image, uint offset, uint size)
 {
+	(void)image; (void)offset; (void)size;
 	return offset;
 }
 
 uint decode_mov_acc_mem(uint8_t *image, uint offset, uint size)
 {
+	(void)image; (void)offset; (void)size;
 	return offset;
 }
 
