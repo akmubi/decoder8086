@@ -3,11 +3,21 @@
 #include <stdlib.h>
 
 typedef unsigned int uint;
-
 typedef uint (*decode_fn)(uint8_t *image, uint offset, uint size);
 
-static uint decoder_mov_rm(uint8_t *image, uint offset, uint size);
-static uint decoder_unknown(uint8_t *image, uint offset, uint size);
+enum instruction {
+	INST_UNKNOWN = 0,
+	/* move register/memory to/from register */
+	INST_MOV_RM_REG,
+	/* move immediate to register/memory */
+	INST_MOV_IMM_RM,
+	/* move immediate to register*/
+	INST_MOV_IMM_REG,
+	/* move memory to accumulator */
+	INST_MOV_MEM_ACC,
+	/* move accumulator to memory */
+	INST_MOV_ACC_MEM,
+};
 
 static char *registers[16] =
 {
@@ -15,28 +25,38 @@ static char *registers[16] =
 	"ax", "cx", "dx", "bx", "sp", "bp", "si", "di", // W = 1
 };
 
-static decode_fn opcode_decoders[64] =
+// equations used in effective address calculation
+static char *ea_base[8] =
 {
-	&decoder_unknown, &decoder_unknown, &decoder_unknown, &decoder_unknown,
-	&decoder_unknown, &decoder_unknown, &decoder_unknown, &decoder_unknown,
-	&decoder_unknown, &decoder_unknown, &decoder_unknown, &decoder_unknown,
-	&decoder_unknown, &decoder_unknown, &decoder_unknown, &decoder_unknown,
-
-	&decoder_unknown, &decoder_unknown, &decoder_unknown, &decoder_unknown,
-	&decoder_unknown, &decoder_unknown, &decoder_unknown, &decoder_unknown,
-	&decoder_unknown, &decoder_unknown, &decoder_unknown, &decoder_unknown,
-	&decoder_unknown, &decoder_unknown, &decoder_unknown, &decoder_unknown,
-
-	&decoder_unknown, &decoder_unknown, &decoder_mov_rm,  &decoder_unknown,
-	&decoder_unknown, &decoder_unknown, &decoder_unknown, &decoder_unknown,
-	&decoder_unknown, &decoder_unknown, &decoder_unknown, &decoder_unknown,
-	&decoder_unknown, &decoder_unknown, &decoder_unknown, &decoder_unknown,
-
-	&decoder_unknown, &decoder_unknown, &decoder_unknown, &decoder_unknown,
-	&decoder_unknown, &decoder_unknown, &decoder_unknown, &decoder_unknown,
-	&decoder_unknown, &decoder_unknown, &decoder_unknown, &decoder_unknown,
-	&decoder_unknown, &decoder_unknown, &decoder_unknown, &decoder_unknown,
+	"bx + si",
+	"bx + di",
+	"bp + si",
+	"bp + di",
+	"si",
+	"di",
+	"bp",
+	"bx",
 };
+
+// instruction decoders
+static uint decode_unknown    (uint8_t *image, uint offset, uint size);
+static uint decode_mov_rm_reg (uint8_t *image, uint offset, uint size);
+static uint decode_mov_imm_rm (uint8_t *image, uint offset, uint size);
+static uint decode_mov_imm_reg(uint8_t *image, uint offset, uint size);
+static uint decode_mov_mem_acc(uint8_t *image, uint offset, uint size);
+static uint decode_mov_acc_mem(uint8_t *image, uint offset, uint size);
+
+static decode_fn decoders[] =
+{
+	&decode_unknown,
+	&decode_mov_rm_reg,
+	&decode_mov_imm_rm,
+	&decode_mov_imm_reg,
+	&decode_mov_mem_acc,
+	&decode_mov_acc_mem,
+};
+
+static enum instruction identify_inst(uint8_t *image, uint offset);
 
 int main(int argc, char *argv[])
 {
@@ -46,7 +66,8 @@ int main(int argc, char *argv[])
 	uint     offset;
 
 	FILE    *asm_file;
-	uint8_t *image;
+	uint8_t *image, *iter;
+	enum instruction inst;
 
 	if (argc != 2) {
 		fprintf(stderr, "Usage: %s FILE\n\twhere FILE is a 8086 "
@@ -84,9 +105,8 @@ int main(int argc, char *argv[])
 	// decode contents
 	offset = 0;
 	while (offset < size) {
-		opcode = image[offset] >> 2;
-		// process intruction and set offset to the next
-		offset = opcode_decoders[opcode](image, offset, size);
+		inst = identify_inst(image, offset);
+		offset = decoders[inst](image, offset, size);
 	}
 
 	free(image);
@@ -94,26 +114,67 @@ int main(int argc, char *argv[])
 	return 0;
 }
 
-uint decoder_mov_rm(uint8_t *image, uint offset, uint size)
+enum instruction identify_inst(uint8_t *image, uint offset)
+{
+	uint8_t *inst;
+
+	inst = image + offset;
+	// move register/memory to/from register
+	if ((inst[0] >> 2) == 0b100010)
+		return INST_MOV_RM_REG;
+	// move immediate to register/memory
+	if (((inst[0] >> 1) == 0b1100011) && !(inst[1] & 0b00111000))
+		return INST_MOV_IMM_RM;
+	// move immediate to register
+	if ((inst[0] >> 4) == 0b1011)
+		return INST_MOV_IMM_REG;
+	// move memory to accumulator
+	if ((inst[0] >> 1) == 0b1010000)
+		return INST_MOV_MEM_ACC;
+	// move accumulator to memory
+	if ((inst[0] >> 1) == 0b1010001)
+		return INST_MOV_ACC_MEM;
+
+	return INST_UNKNOWN;
+}
+
+uint decode_unknown(uint8_t *image, uint offset, uint size)
+{
+	int i;
+
+	(void)size;
+
+	fprintf(stderr, "; 0x%08X: unknown opcode: ", offset);
+
+	for (i = 7; i >= 0; --i) {
+		fprintf(stderr, "%c", (image[offset] & (1U << i)) ? '1' : '0');
+	}
+		
+	fprintf(stderr, "\n");
+	exit(EXIT_FAILURE);
+}
+
+uint decode_mov_rm_reg (uint8_t *image, uint offset, uint size)
 {
 	uint8_t d, w, mod, reg, r_m;
 	uint8_t dest, src;
-	uint8_t *op = image + offset;
+	uint8_t *inst = image + offset;
 
 	if (offset + 2 > size) {
-		goto finish_decoder_mov_rm;
+		goto finish_mov_rm_reg;
 	}
 
-	d   = (op[0] >> 1) & 0b1;
-	w   = op[0]        & 0b1;
-	mod = (op[1] >> 6) & 0b11;
-	reg = (op[1] >> 3) & 0b111;
-	r_m = op[1]        & 0b111;
+	d   = (inst[0] >> 1) & 0b1;
+	w   = (inst[0] >> 0) & 0b1;
+
+	mod = (inst[1] >> 6) & 0b11;
+	reg = (inst[1] >> 3) & 0b111;
+	r_m = (inst[1] >> 0) & 0b111;
 
 	if (mod != 0b11) {
 		fprintf(stderr, "; 0x%08X: mov: MOD = %02u not handled\n",
 		        offset, (mod >> 1) * 10 + (mod & 1) * 1);
-		goto finish_decoder_mov_rm;
+		goto finish_mov_rm_reg;
 	}
 
 	// determine which field is destination and which is source
@@ -128,23 +189,27 @@ uint decoder_mov_rm(uint8_t *image, uint offset, uint size)
 
 	printf("mov %s, %s\n", registers[dest], registers[src]);
 
-finish_decoder_mov_rm:
+finish_mov_rm_reg:
 	return offset + 2;
 }
 
-uint decoder_unknown(uint8_t *image, uint offset, uint size)
+uint decode_mov_imm_rm (uint8_t *image, uint offset, uint size)
 {
-	int i;
+	return offset;
+}
 
-	(void)size;
+uint decode_mov_imm_reg(uint8_t *image, uint offset, uint size)
+{
+	return offset;
+}	
 
-	fprintf(stderr, "; 0x%08X: unknown opcode: ", offset);
+uint decode_mov_mem_acc(uint8_t *image, uint offset, uint size)
+{
+	return offset;
+}
 
-	for (i = 7; i >= 2; --i) {
-		fprintf(stderr, "%c", (image[offset] & (1U << i)) ? '1' : '0');
-	}
-
-	fprintf(stderr, "\n");
-	exit(EXIT_FAILURE);
+uint decode_mov_acc_mem(uint8_t *image, uint offset, uint size)
+{
+	return offset;
 }
 
