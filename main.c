@@ -164,11 +164,11 @@ uint decode_mov_rm_reg(uint8_t *image, uint offset)
 	offset += 2;
 
 	d   = (inst[0] >> 1) & 0b1;
-	w   = (inst[0] >> 0) & 0b1;
+	w   = (inst[0])      & 0b1;
 
 	mod = (inst[1] >> 6) & 0b11;
 	reg = (inst[1] >> 3) & 0b111;
-	r_m = (inst[1] >> 0) & 0b111;
+	r_m = (inst[1])      & 0b111;
 
 	first_op  = registers[(w << 3) | reg];
 	second_op = registers[(w << 3) | r_m];
