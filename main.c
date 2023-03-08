@@ -3,7 +3,7 @@
 #include <stdlib.h>
 
 typedef unsigned int uint;
-typedef uint (*decode_fn)(uint8_t *image, uint offset, uint size);
+typedef uint (*decode_fn)(uint8_t *image, uint offset);
 
 enum instruction {
 	INST_UNKNOWN = 0,
@@ -39,12 +39,12 @@ static char *ea_base[8] =
 };
 
 // instruction decoders
-static uint decode_unknown    (uint8_t *image, uint offset, uint size);
-static uint decode_mov_rm_reg (uint8_t *image, uint offset, uint size);
-static uint decode_mov_imm_rm (uint8_t *image, uint offset, uint size);
-static uint decode_mov_imm_reg(uint8_t *image, uint offset, uint size);
-static uint decode_mov_mem_acc(uint8_t *image, uint offset, uint size);
-static uint decode_mov_acc_mem(uint8_t *image, uint offset, uint size);
+static uint decode_unknown    (uint8_t *image, uint offset);
+static uint decode_mov_rm_reg (uint8_t *image, uint offset);
+static uint decode_mov_imm_rm (uint8_t *image, uint offset);
+static uint decode_mov_imm_reg(uint8_t *image, uint offset);
+static uint decode_mov_mem_acc(uint8_t *image, uint offset);
+static uint decode_mov_acc_mem(uint8_t *image, uint offset);
 
 static decode_fn decoders[] =
 {
@@ -105,7 +105,7 @@ int main(int argc, char *argv[])
 	offset = 0;
 	while (offset < size) {
 		inst = identify_inst(image, offset);
-		offset = decoders[inst](image, offset, size);
+		offset = decoders[inst](image, offset);
 	}
 
 	free(image);
@@ -137,11 +137,9 @@ enum instruction identify_inst(uint8_t *image, uint offset)
 	return INST_UNKNOWN;
 }
 
-uint decode_unknown(uint8_t *image, uint offset, uint size)
+uint decode_unknown(uint8_t *image, uint offset)
 {
 	int i;
-
-	(void)size;
 
 	fprintf(stderr, "; 0x%08X: unknown opcode: ", offset);
 
@@ -153,7 +151,7 @@ uint decode_unknown(uint8_t *image, uint offset, uint size)
 	exit(EXIT_FAILURE);
 }
 
-uint decode_mov_rm_reg(uint8_t *image, uint offset, uint size)
+uint decode_mov_rm_reg(uint8_t *image, uint offset)
 {
 	int  len;
 	char ea_str[64];
@@ -161,12 +159,9 @@ uint decode_mov_rm_reg(uint8_t *image, uint offset, uint size)
 
 	uint8_t d, w, mod, reg, r_m;
 	uint8_t *inst = image + offset;
-	uint16_t tmp;
+	uint16_t disp;
 
 	offset += 2;
-	if (offset > size) {
-		return offset;
-	}
 
 	d   = (inst[0] >> 1) & 0b1;
 	w   = (inst[0] >> 0) & 0b1;
@@ -179,26 +174,26 @@ uint decode_mov_rm_reg(uint8_t *image, uint offset, uint size)
 	second_op = registers[(w << 3) | r_m];
 
 	if (mod != 0b11) {
-		tmp = (inst[3] << 8) | inst[2];
+		disp = (inst[3] << 8) | inst[2];
 		offset += 2;
 
 		if (mod == 0b00 && r_m == 0b110) {
-			len = snprintf(ea_str, sizeof(ea_str), "[%u]", tmp);
+			len = snprintf(ea_str, sizeof(ea_str), "[%u]", disp);
 		} else {
 			if (mod == 0b01) {
-				tmp &= 0x00FF;
+				disp &= 0x00FF;
 				offset--;
 			} else if (mod == 0b00) {
-				tmp = 0;
+				disp = 0;
 				offset -= 2;
 			}
 
 			len = snprintf(ea_str, sizeof(ea_str), "[%s",
 			               ea_base[r_m]);
-			if (tmp > 0) {
+			if (disp > 0) {
 				len += snprintf(ea_str + len,
 				                sizeof(ea_str) - len, " + %u",
-				                tmp);
+				                disp);
 			}
 
 			len += snprintf(ea_str + len, sizeof(ea_str) - len,
@@ -214,34 +209,115 @@ uint decode_mov_rm_reg(uint8_t *image, uint offset, uint size)
 		second_op = tmp_op;
 	}
 
-	printf("mov %s, %s", first_op, second_op);
-	printf(" ; d: %u, w: %u, mod: %u, reg: %u, r/m: %u, off: 0x%X", d, w, mod, reg, r_m, offset);
-	printf("\n");
+	printf("mov %s, %s\n", first_op, second_op);
 
 	return offset;
 }
 
-uint decode_mov_imm_rm(uint8_t *image, uint offset, uint size)
+uint decode_mov_imm_rm(uint8_t *image, uint offset)
 {
-	(void)image; (void)offset; (void)size;
+	int  len;
+	char ea_str[64];
+	char *dest_op, *imm_size;
+
+	uint8_t w, mod, r_m;
+	uint8_t *inst = image + offset;
+	uint16_t imm, disp;
+
+	offset += 2;
+
+	w   = (inst[0])      & 0b1;
+	mod = (inst[1] >> 6) & 0b11;
+	r_m = (inst[1])      & 0b111;
+
+	dest_op  = registers[(w << 3) | r_m];
+	imm      = (inst[3] << 8) * w | inst[2];
+	imm_size = ""; // for registers size can be ommited
+
+	if (mod != 0b11) {
+		imm_size = (w) ? "word " : "byte ";
+
+		disp = (inst[3] << 8) | inst[2];
+		offset += 2;
+
+		if (mod == 0b00 && r_m == 0b110) {
+			len = snprintf(ea_str, sizeof(ea_str), "[%u]", disp);
+		} else {
+			if (mod == 0b01) {
+				disp &= 0x00FF;
+				offset--;
+			} else if (mod == 0b00) {
+				disp = 0;
+				offset -= 2;
+			}
+
+			len = snprintf(ea_str, sizeof(ea_str), "[%s",
+			               ea_base[r_m]);
+			if (disp > 0) {
+				len += snprintf(ea_str + len,
+				                sizeof(ea_str) - len, " + %u",
+				                disp);
+			}
+
+			len += snprintf(ea_str + len, sizeof(ea_str) - len,
+			                "]");
+		}
+
+		dest_op = ea_str;
+
+		// immediate is placed after displacement value
+		imm = (image[offset + 1] << 8) * w | image[offset];
+		offset += 1 + w;
+	}
+
+	printf("mov %s, %s%u\n", dest_op, imm_size, imm);
+
 	return offset;
 }
 
-uint decode_mov_imm_reg(uint8_t *image, uint offset, uint size)
+uint decode_mov_imm_reg(uint8_t *image, uint offset)
 {
-	(void)image; (void)offset; (void)size;
-	return offset;
+	uint8_t w, reg;
+	uint8_t *inst = image + offset;
+	uint16_t imm;
+
+	w   = (inst[0] >> 3) & 0b1;
+	reg = (inst[0])      & 0b111;
+
+	imm = (inst[2] << 8) * w | inst[1];
+
+	printf("mov %s, %u\n", registers[(w << 3) | reg], imm);
+
+	return offset + 2 + w;
 }	
 
-uint decode_mov_mem_acc(uint8_t *image, uint offset, uint size)
+uint decode_mov_mem_acc(uint8_t *image, uint offset)
 {
-	(void)image; (void)offset; (void)size;
-	return offset;
+	uint8_t w;
+	uint8_t *inst = image + offset;
+	uint16_t mem_addr;
+
+	w = inst[0] & 0b1;
+
+	mem_addr = (inst[2] << 8) * w | inst[1];
+
+	printf("mov ax, [%u]\n", mem_addr);
+
+	return offset + 2 + w;
 }
 
-uint decode_mov_acc_mem(uint8_t *image, uint offset, uint size)
+uint decode_mov_acc_mem(uint8_t *image, uint offset)
 {
-	(void)image; (void)offset; (void)size;
-	return offset;
+	uint8_t w;
+	uint8_t *inst = image + offset;
+	uint16_t mem_addr;
+
+	w = inst[0] & 0b1;
+
+	mem_addr = (inst[2] << 8) * w | inst[1];
+
+	printf("mov [%u], ax\n", mem_addr);
+
+	return offset + 2 + w;
 }
 
