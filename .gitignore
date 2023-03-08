@@ -4,3 +4,7 @@ build/
 # clangd files
 .cache/
 compile_commands.json
+
+*.out
+*.gen
+*.gen.asm
