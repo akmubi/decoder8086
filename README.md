@@ -8,7 +8,7 @@ To build the program, simply compile the `main.c` file. The `tests` folder conta
 mkdir build
 gcc main.c -o build/main.out
 ```
-2. Using Makefile
+2. Using Makefile (Unix)
 ```
 make
 ```
@@ -21,7 +21,7 @@ nasm tests/0000.asm -o tests/obj/0000.asm.o
 build/main.out tests/obj/0000.asm.o
 ```
 
-2. Using Makefile
+2. Using Makefile (Unix)
 ```
 make test
 ```
