@@ -25,7 +25,7 @@ static char *registers[16] =
 	"ax", "cx", "dx", "bx", "sp", "bp", "si", "di", // W = 1
 };
 
-// equations used in effective address calculation
+// used in effective address calculation
 static char *ea_base[8] =
 {
 	"bx + si",
@@ -60,6 +60,7 @@ static enum instruction identify_inst(uint8_t *image, uint offset);
 
 int main(int argc, char *argv[])
 {
+	int      rc = 0;
 	size_t   nread;
 	size_t   size;
 	uint     offset;
@@ -71,13 +72,15 @@ int main(int argc, char *argv[])
 	if (argc != 2) {
 		fprintf(stderr, "Usage: %s FILE\n\twhere FILE is a 8086 "
 		        "assembly file to decode\n", argv[0]);
-		exit(EXIT_FAILURE);
+		rc = 1;
+		goto exit_main;
 	}
 
 	asm_file = fopen(argv[1], "rb");
 	if (asm_file == NULL) {
 		perror("failed to open file");
-		exit(EXIT_FAILURE);
+		rc = 2;
+		goto exit_main;
 	}
 
 	// determine file size
@@ -88,14 +91,16 @@ int main(int argc, char *argv[])
 	image = malloc(size);
 	if (image == NULL) {
 		perror("failed to allocate memory for a file image");
-		exit(EXIT_FAILURE);
+		rc = 3;
+		goto fclose_file;
 	}
 
 	// copy file contents
 	nread = fread(image, 1, size, asm_file);
 	if (nread != size) {
 		fprintf(stderr, "failed to read file contents");
-		exit(EXIT_FAILURE);
+		rc = 4;
+		goto free_image;
 	}
 
 	printf("; %s\n", argv[1]);
@@ -108,9 +113,12 @@ int main(int argc, char *argv[])
 		offset = decoders[inst](image, offset);
 	}
 
+free_image:
 	free(image);
+fclose_file:
 	fclose(asm_file);
-	return 0;
+exit_main:
+	return rc;
 }
 
 enum instruction identify_inst(uint8_t *image, uint offset)
@@ -118,19 +126,14 @@ enum instruction identify_inst(uint8_t *image, uint offset)
 	uint8_t *inst;
 
 	inst = image + offset;
-	// move register/memory to/from register
 	if ((inst[0] >> 2) == 0b100010)
 		return INST_MOV_RM_REG;
-	// move immediate to register/memory
 	if (((inst[0] >> 1) == 0b1100011) && !(inst[1] & 0b00111000))
 		return INST_MOV_IMM_RM;
-	// move immediate to register
 	if ((inst[0] >> 4) == 0b1011)
 		return INST_MOV_IMM_REG;
-	// move memory to accumulator
 	if ((inst[0] >> 1) == 0b1010000)
 		return INST_MOV_MEM_ACC;
-	// move accumulator to memory
 	if ((inst[0] >> 1) == 0b1010001)
 		return INST_MOV_ACC_MEM;
 
@@ -146,22 +149,23 @@ uint decode_unknown(uint8_t *image, uint offset)
 	for (i = 7; i >= 0; --i) {
 		fprintf(stderr, "%c", (image[offset] & (1U << i)) ? '1' : '0');
 	}
-		
+
 	fprintf(stderr, "\n");
 	exit(EXIT_FAILURE);
 }
 
 uint decode_mov_rm_reg(uint8_t *image, uint offset)
 {
-	int  len;
-	char ea_str[64];
+	int   len;
+	char  ea_str[64];
 	char *first_op, *second_op, *tmp_op;
 
-	uint8_t d, w, mod, reg, r_m;
+	uint     inst_size;
+	uint8_t  d, w, mod, reg, r_m;
 	uint8_t *inst = image + offset;
 	uint16_t disp;
 
-	offset += 2;
+	inst_size = 2;
 
 	d   = (inst[0] >> 1) & 0b1;
 	w   = (inst[0])      & 0b1;
@@ -175,17 +179,17 @@ uint decode_mov_rm_reg(uint8_t *image, uint offset)
 
 	if (mod != 0b11) {
 		disp = (inst[3] << 8) | inst[2];
-		offset += 2;
+		inst_size += 2;
 
 		if (mod == 0b00 && r_m == 0b110) {
 			len = snprintf(ea_str, sizeof(ea_str), "[%u]", disp);
 		} else {
 			if (mod == 0b01) {
 				disp &= 0x00FF;
-				offset--;
+				inst_size--;
 			} else if (mod == 0b00) {
 				disp = 0;
-				offset -= 2;
+				inst_size -= 2;
 			}
 
 			len = snprintf(ea_str, sizeof(ea_str), "[%s",
@@ -211,7 +215,7 @@ uint decode_mov_rm_reg(uint8_t *image, uint offset)
 
 	printf("mov %s, %s\n", first_op, second_op);
 
-	return offset;
+	return offset + inst_size;
 }
 
 uint decode_mov_imm_rm(uint8_t *image, uint offset)
@@ -232,7 +236,7 @@ uint decode_mov_imm_rm(uint8_t *image, uint offset)
 
 	dest_op  = registers[(w << 3) | r_m];
 	imm      = (inst[3] << 8) * w | inst[2];
-	imm_size = ""; // for registers size can be ommited
+	imm_size = ""; // if destination is register size can be ommited
 
 	if (mod != 0b11) {
 		imm_size = (w) ? "word " : "byte ";
