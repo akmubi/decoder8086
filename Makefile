@@ -1,6 +1,10 @@
 CC        := clang
+CFLAGS    := -Wall -Wextra -g
 APP_NAME  := main.out
 BUILD_DIR := build
+
+# build/main.out
+APP := $(BUILD_DIR)/$(APP_NAME)
 
 .PHONY: all target compile clean
 
@@ -8,68 +12,65 @@ all: compile
 
 compile: clean target
 
-target: $(BUILD_DIR)/$(APP_NAME)
+target: $(APP)
 
-$(BUILD_DIR)/$(APP_NAME): $(BUILD_DIR)/main.o
+$(APP): $(BUILD_DIR)/main.o
 	$(CC) $^ -o $@
 
 $(BUILD_DIR)/main.o: main.c
-	@mkdir -p $(BUILD_DIR)
-	$(CC) -Wall -Wextra -Werror -g -c $< -o $@
+	@-mkdir $(BUILD_DIR) || true
+	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	@echo "Removing build files...."
-	@rm -rf $(BUILD_DIR)/
+	@echo -n "Removing build files..."
+	@-rm -rf $(BUILD_DIR)
 	@echo "Done!"
 
 #
 # TESTING
 #
 
-# Example: tests/0001.asm ==> tests/tmp/0001.asm.out
 TEST_DIR     := tests
+# list of all asm files to test
 TEST_ASM     := $(wildcard ${TEST_DIR}/*.asm)
-TEST_ASM_TMP := $(subst ${TEST_DIR}/,${TEST_DIR}/tmp/,${TEST_ASM})
+# dir where temporary test files will be placed
+TEST_OUT_DIR := $(BUILD_DIR)/$(TEST_DIR)
+# tests/0001.asm ==> build/tests/0001.asm
+TEST_OUT_ASM := $(addprefix ${BUILD_DIR}/,${TEST_ASM})
 
 # tests/0001.asm
 TEST_ASM_ORIG_SRC := $(TEST_ASM)
-# tests/tmp/0001.asm.out
-TEST_ASM_ORIG_OBJ := $(addsuffix .out,${TEST_ASM_TMP})
-# tests/tmp/0001.asm.gen
-TEST_ASM_GEN_SRC  := $(addsuffix .gen,${TEST_ASM_TMP})
-# tests/tmp/0001.asm.gen.out
-TEST_ASM_GEN_OBJ  := $(addsuffix .gen.out,${TEST_ASM_TMP})
+# build/tests/0001.asm.out
+TEST_ASM_ORIG_OBJ := $(addsuffix .out,${TEST_OUT_ASM})
+# build/tests/0001.asm.gen
+TEST_ASM_GEN_SRC  := $(addsuffix .gen,${TEST_OUT_ASM})
+# build/tests/0001.asm.gen.out
+TEST_ASM_GEN_OBJ  := $(addsuffix .gen.out,${TEST_OUT_ASM})
 
-.PHONY: test test_tmp_dir util_rm_file
+.PHONY: test test_build_dir compare
 
-test: test_tmp_dir cmp_files.out rm_file.out $(TEST_ASM_GEN_OBJ)
-	@./rm_file.out tests/tmp
-	@./rm_file.out cmp_files.out
-	@./rm_file.out rm_file.out
+test: test_build_dir compare
 
-test_tmp_dir:
-	@-mkdir $(TEST_DIR)/tmp
+test_build_dir:
+	@-mkdir $(TEST_OUT_DIR) 2>/dev/null || true
 
-rm_file.out: $(TEST_DIR)/rm_file.c
+$(BUILD_DIR)/cmp_files.out: $(TEST_DIR)/cmp_files.c
 	@$(CC) $< -o $@
 
-cmp_files.out: $(TEST_DIR)/cmp_files.c
-	@$(CC) $< -o $@
-
-# tests/0001.asm ==> tests/tmp/0001.asm.out
-$(TEST_ASM_ORIG_OBJ): $(TEST_DIR)/tmp/%.asm.out: $(TEST_DIR)/%.asm
+# tests/0001.asm ==> build/tests/0001.asm.out
+$(TEST_ASM_ORIG_OBJ): $(TEST_OUT_DIR)/%.asm.out: $(TEST_DIR)/%.asm
 	@nasm $< -o $@
 
-# tests/tmp/0001.asm.out ==> tests/tmp/0001.asm.gen
-$(TEST_ASM_GEN_SRC): %.gen: %.out $(BUILD_DIR)/$(APP_NAME)
-	@$(BUILD_DIR)/$(APP_NAME) $< > $@
+# build/tests/0001.asm.out ==> build/tests/0001.asm.gen
+$(TEST_ASM_GEN_SRC): %.gen: %.out $(APP)
+	@./$(APP) $< > $@
 
-# tests/tmp/0001.asm.gen ==> tests/tmp/0001.asm.gen.out
-$(TEST_ASM_GEN_OBJ): %.gen.out: %.gen cmp_files.out
+# build/tests/0001.asm.gen ==> build/tests/0001.asm.gen.out
+$(TEST_ASM_GEN_OBJ): %.gen.out: %.gen
 	@nasm $< -o $@
-	@echo -n "[Testing '$*'] "
-	@-./cmp_files.out $*.out $*.gen.out || true
-	@./rm_file.out $*.out
-	@./rm_file.out $*.gen
-	@./rm_file.out $*.gen.out
 
+compare: $(BUILD_DIR)/cmp_files.out $(TEST_ASM_GEN_OBJ) $(TEST_ASM_ORIG_OJB)
+	@for file in $(TEST_OUT_ASM); do \
+		echo -n "[Testing '$(notdir $$file)'] "; \
+		./$< $$file.out $$file.gen.out || true;\
+	done
