@@ -1,3 +1,4 @@
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -163,7 +164,7 @@ uint decode_mov_rm_reg(uint8_t *image, uint offset)
 	uint     inst_size;
 	uint8_t  d, w, mod, reg, r_m;
 	uint8_t *inst = image + offset;
-	uint16_t disp;
+	int16_t disp;
 
 	inst_size = 2;
 
@@ -184,20 +185,30 @@ uint decode_mov_rm_reg(uint8_t *image, uint offset)
 		if (mod == 0b00 && r_m == 0b110) {
 			len = snprintf(ea_str, sizeof(ea_str), "[%u]", disp);
 		} else {
+			// [ ea_base + d8 ]
 			if (mod == 0b01) {
+				// only low byte
 				disp &= 0x00FF;
+				// if sign bit is set then sign-extend
+				if (disp & 0x80) {
+					disp |= 0xFF00;
+				}
+
 				inst_size--;
+			// [ ea_base ]
 			} else if (mod == 0b00) {
+				// no displacement
 				disp = 0;
 				inst_size -= 2;
 			}
 
 			len = snprintf(ea_str, sizeof(ea_str), "[%s",
 			               ea_base[r_m]);
-			if (disp > 0) {
+			if (disp != 0) {
 				len += snprintf(ea_str + len,
-				                sizeof(ea_str) - len, " + %u",
-				                disp);
+				                sizeof(ea_str) - len, " %c %d",
+				                (disp < 0) ? '-' : '+',
+				                abs(disp));
 			}
 
 			len += snprintf(ea_str + len, sizeof(ea_str) - len,
@@ -220,13 +231,14 @@ uint decode_mov_rm_reg(uint8_t *image, uint offset)
 
 uint decode_mov_imm_rm(uint8_t *image, uint offset)
 {
-	int  len;
-	char ea_str[64];
+	int   len;
+	char  ea_str[64];
 	char *dest_op, *imm_size;
 
-	uint8_t w, mod, r_m;
+	uint8_t  w, mod, r_m;
 	uint8_t *inst = image + offset;
-	uint16_t imm, disp;
+	uint16_t imm;
+	int16_t  disp;
 
 	offset += 2;
 
@@ -249,6 +261,10 @@ uint decode_mov_imm_rm(uint8_t *image, uint offset)
 		} else {
 			if (mod == 0b01) {
 				disp &= 0x00FF;
+				if (disp & 0x80) {
+					disp |= 0xFF00;
+				}
+
 				offset--;
 			} else if (mod == 0b00) {
 				disp = 0;
@@ -257,10 +273,11 @@ uint decode_mov_imm_rm(uint8_t *image, uint offset)
 
 			len = snprintf(ea_str, sizeof(ea_str), "[%s",
 			               ea_base[r_m]);
-			if (disp > 0) {
+			if (disp != 0) {
 				len += snprintf(ea_str + len,
-				                sizeof(ea_str) - len, " + %u",
-				                disp);
+				                sizeof(ea_str) - len, " %c + %d",
+				                (disp < 0) ? '-' : '+',
+				                abs(disp));
 			}
 
 			len += snprintf(ea_str + len, sizeof(ea_str) - len,

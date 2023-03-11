@@ -18,7 +18,7 @@ $(APP): $(BUILD_DIR)/main.o
 	$(CC) $^ -o $@
 
 $(BUILD_DIR)/main.o: main.c
-	@-mkdir $(BUILD_DIR) || true
+	@-mkdir $(BUILD_DIR) 2>/dev/null || true
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
