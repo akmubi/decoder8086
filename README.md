@@ -18,7 +18,9 @@ make
 ```
 mkdir build/tests
 nasm tests/0000.asm -o build/tests/0000.asm.out
-build/main.out build/tests/0000.asm.out
+build/main.out build/tests/0000.asm.out > build/tests/0000.asm.gen
+nasm build/tests/0000.asm.gen -o build/tests/0000.asm.gen.out
+diff -q build/tests/0000.asm.out build/tests/0000.asm.gen.out
 ```
 
 2. Using Makefile (Unix)
