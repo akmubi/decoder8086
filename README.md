@@ -17,8 +17,8 @@ make
 1. By yourself:
 ```
 mkdir build/tests
-nasm tests/0000.asm -o build/tests/0000.asm.o
-build/main.out build/tests/0000.asm.o
+nasm tests/0000.asm -o build/tests/0000.asm.out
+build/main.out build/tests/0000.asm.out
 ```
 
 2. Using Makefile (Unix)
