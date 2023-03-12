@@ -14,7 +14,7 @@
 #define FIELD_MOD(byte)  (((byte) >> 6) & 0b11)
 #define FIELD_RM(byte)   (((byte) >> 0) & 0b111)
 #define FIELD_REG(byte)  (((byte) >> 3) & 0b111)
-// used to defined registers al-bh and ax-di
+// another place where registers can be
 #define FIELD_REG2(byte) (((byte) >> 0) & 0b111)
 
 enum inst_type
@@ -234,10 +234,9 @@ static struct inst_data get_inst_data(uint8_t * const image, uint offset);
 // generates mnemonic for instruction
 static const char *gen_inst_name(enum inst_type type, uint8_t * const image,
                                  uint offset);
-// determine the label if instruction has one
+// for a jump instruction it determines the label address
 static int get_label_addr(enum inst_type type, uint8_t * const image,
                             uint offset);
-
 // calculate displacement size for reg/mem field
 static uint calc_disp_size(uint8_t * const image, uint offset);
 
@@ -311,19 +310,19 @@ static char *ea_base[8] =
 
 struct inst_data
 {
-	// instruction mnemonic
+	// instruction type
 	enum inst_type type;
-	// function that decodes first parameter
+	// function that decodes first operand
 	decode_fn      op1_dec;
-	// function that decodes second parameter
+	// function that decodes second operand
 	decode_fn      op2_dec;
 	// (minimum) instruction size (in bytes)
 	uint           size;
 };
 
-// NOTE: all instructions contain reg8/mem8 have 2 bytes size because
-// displacement bytes can be ommitted, so actual size needs to be calculated for
-// this instructions
+// NOTE: the reason why all instructions that contain reg8/mem8 have a size of
+// 2 bytes is that displacement bytes may vary, and the actual size of these
+// instructions needs to be calculated
 struct inst_data inst_table[256] = {
 	{ INST_TYPE_ADD,    &decode_reg_mem, &decode_regw,    2 },
 	{ INST_TYPE_ADD,    &decode_reg_mem, &decode_regw,    2 },
@@ -537,7 +536,7 @@ struct inst_data inst_table[256] = {
 	{ INST_TYPE_EXTD,   NULL,            NULL,            0 },
 	{ INST_TYPE_EXTD,   NULL,            NULL,            0 },
 	{ INST_TYPE_EXTD,   NULL,            NULL,            0 },
-	// NOTE: for some r eason these two instuctions take 2 bytes
+	// NOTE: for some reason these two instuctions take 2 bytes
 	{ INST_TYPE_AAM,    NULL,            NULL,            2 },
 	{ INST_TYPE_AAD,    NULL,            NULL,            2 },
 	{ INST_TYPE_UNK,    NULL,            NULL,            1 },
@@ -860,7 +859,7 @@ int main(int argc, char *argv[])
 		op2 = inst.op2_dec;
 		if (op1 == &decode_reg_mem || op2 == &decode_reg_mem ||
 		    op1 == &decode_mem16   || op2 == &decode_mem16) {
-			// add displacement size
+			// add displacement size to total instruction size
 			inst.size += calc_disp_size(image, offset);
 		}
 
@@ -868,7 +867,7 @@ int main(int argc, char *argv[])
 		inst_count++;
 	}
 
-	// label or not
+	// place label before instruction or not
 	bitmap_init(&bitmap_label, size);
 
 	insts = malloc(inst_count * sizeof(*insts));
@@ -891,19 +890,9 @@ int main(int argc, char *argv[])
 		    op1 == &decode_mem16   || op2 == &decode_mem16) {
 			insts[i].size += calc_disp_size(image, offset);
 		}
-
-		// get label address if it's a jump instruction
+		// get label address for jump instructions
 		label_addr = get_label_addr(insts[i].type, image, offset);
-#if 0
-		if (label_addr > (int)size) {
-			fprintf(stderr, "invalid label address: %X\n",
-			        label_addr);
-			rc = 7;
-			goto free_insts;
-		}
-#endif
-
-		// set bits where label should be placed
+		// set bit at label address
 		if (label_addr >= 0) {
 			bitmap_set_bit(&bitmap_label, label_addr);
 		}
@@ -990,9 +979,6 @@ int main(int argc, char *argv[])
 		i++;
 	}
 
-#if 0
-free_insts:
-#endif
 	free(insts);
 free_bitmap:
 	bitmap_free(&bitmap_label);
@@ -1176,7 +1162,6 @@ int get_label_addr(enum inst_type type, uint8_t * const image, uint offset)
 	uint8_t  tmp8;
 	uint16_t tmp16;
 
-	// if this is a jump instruction, determine label address
 	switch (type) {
 	case INST_TYPE_JO:
 	case INST_TYPE_JNO:
@@ -1199,8 +1184,7 @@ int get_label_addr(enum inst_type type, uint8_t * const image, uint offset)
 	case INST_TYPE_LOOP:
 	case INST_TYPE_JCXZ:
 		// these instructions have only ip-inc8 field
-		// which is next byte
-		// read as signed 8-bit integer
+		// address is read as signed 8-bit integer
 		tmp8 = image[offset + 1];
 		label_addr = offset + 2;
 		label_addr += *((int8_t *)&tmp8);
@@ -1515,3 +1499,4 @@ void decode_reg_l(uint8_t * const image, uint offset)
 	reg = FIELD_REG(inst[1]);
 	printf("%s", regs[1][reg]);
 }
+
