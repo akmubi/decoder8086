@@ -53,7 +53,7 @@ TEST_ASM_GEN_OBJ  := $(addsuffix .gen.out,${TEST_OUT_ASM})
 
 test: test_build_dir compare
 
-test_build_dir:
+test_build_dir: build_dir
 	@-mkdir $(TEST_OUT_DIR) 2>/dev/null || true
 
 # tests/0001.asm ==> build/tests/0001.asm.out
