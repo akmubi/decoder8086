@@ -56,9 +56,6 @@ test: test_build_dir compare
 test_build_dir:
 	@-mkdir $(TEST_OUT_DIR) 2>/dev/null || true
 
-$(BUILD_DIR)/cmp_files.out: $(TEST_DIR)/cmp_files.c
-	@$(CC) $< -o $@
-
 # tests/0001.asm ==> build/tests/0001.asm.out
 $(TEST_ASM_ORIG_OBJ): $(TEST_OUT_DIR)/%.asm.out: $(TEST_DIR)/%.asm
 	@nasm $< -o $@
@@ -71,8 +68,8 @@ $(TEST_ASM_GEN_SRC): %.gen: %.out $(APP)
 $(TEST_ASM_GEN_OBJ): %.gen.out: %.gen
 	@nasm $< -o $@
 
-compare: $(BUILD_DIR)/cmp_files.out $(TEST_ASM_GEN_OBJ) $(TEST_ASM_ORIG_OJB)
+compare: $(TEST_DIR)/cmp.sh $(TEST_ASM_GEN_OBJ) $(TEST_ASM_ORIG_OJB)
 	@for file in $(TEST_OUT_ASM); do \
 		echo -n "[Testing '$(notdir $$file)'] "; \
-		./$< $$file.out $$file.gen.out || true;\
+		./$< $$file.out $$file.gen.out; \
 	done
