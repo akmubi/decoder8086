@@ -12,13 +12,15 @@ all: compile
 
 compile: clean target
 
-target: $(APP)
+target: build_dir $(APP)
 
-$(APP): $(BUILD_DIR)/main.o
+$(APP): $(BUILD_DIR)/main.o $(BUILD_DIR)/bitmap.o
 	$(CC) $^ -o $@
 
-$(BUILD_DIR)/main.o: main.c
+build_dir:
 	@-mkdir $(BUILD_DIR) 2>/dev/null || true
+
+$(BUILD_DIR)/%.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
