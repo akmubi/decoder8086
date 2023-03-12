@@ -6,7 +6,7 @@ To build the program, simply compile the `main.c` file. The `tests` folder conta
 1. By yourself:
 ```
 mkdir build
-gcc main.c -o build/main.out
+gcc main.c bitmap.c -o build/main.out
 ```
 2. Using Makefile (Unix)
 ```
@@ -16,9 +16,9 @@ make
 ## Testing
 1. By yourself:
 ```
-mkdir tests/obj
-nasm tests/0000.asm -o tests/obj/0000.asm.o
-build/main.out tests/obj/0000.asm.o
+mkdir build/tests
+nasm tests/0000.asm -o build/tests/0000.asm.o
+build/main.out build/tests/0000.asm.o
 ```
 
 2. Using Makefile (Unix)
