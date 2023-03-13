@@ -1,6 +1,6 @@
 # decoder8086
 
-To build the program, simply compile the `main.c` file. The `tests` folder contains assembly source codes for basic instructions that can be used to test the program. To compile the tests, use `nasm` and then feed them to the program.
+To build the program, simply compile the `main.c` file. To test program you can use assembly source codes in `tests` directory.
 
 ## Building
 1. By yourself:
