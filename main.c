@@ -1219,29 +1219,21 @@ int get_label_addr(enum inst_type type, uint8_t * const image, uint offset)
 
 uint calc_disp_size(uint8_t * const image, uint offset)
 {
-	uint    disp_size = 0;
 	uint8_t mod, r_m;
 	uint8_t *inst = image + offset;
 
 	mod = FIELD_MOD(inst[1]);
 	r_m = FIELD_RM(inst[1]);
 
-	if (mod != 0b11) {
-		// direct address
-		if (mod == 0b00 && r_m == 0b110) {
-			disp_size = 2;
-		}
-		// 8-bit displacement
-		if (mod == 0b01) {
-			disp_size = 1;
-		}
-		// 16-bit displacement
-		if (mod == 0b10) {
-			disp_size = 2;
-		}
-	}
+	// direct address and 16-bit displacement
+	if ((mod == 0b00 && r_m == 0b110) || mod == 0b10)
+		return 2;
 
-	return disp_size;
+	// 8-bit displacement
+	if (mod == 0b01)
+		return 1;
+
+	return 0;
 }
 
 void decode_reg_mem(uint8_t * const image, uint offset)
