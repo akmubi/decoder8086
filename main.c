@@ -16,6 +16,9 @@
 #define FIELD_REG(byte)  (((byte) >> 3) & 0b111)
 // another place where registers can be
 #define FIELD_REG2(byte) (((byte) >> 0) & 0b111)
+// esc instruction opcode
+#define FIELD_ESC1(byte) (((byte) >> 0) & 0b111)
+#define FIELD_ESC2(byte) (((byte) >> 3) & 0b111)
 
 enum inst_type
 {
@@ -1420,7 +1423,11 @@ void decode_3(uint8_t * const image, uint offset)
 
 void decode_esc(uint8_t * const image, uint offset)
 {
-	(void)image; (void)offset;
+	uint8_t *inst = image + offset;
+	uint8_t opcode;
+
+	opcode = (FIELD_ESC1(inst[0]) << 3) | FIELD_ESC2(inst[1]);
+	printf("%u", opcode);
 }
 
 void decode_ax(uint8_t * const image,  uint offset)
