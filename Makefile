@@ -70,6 +70,5 @@ $(TEST_ASM_GEN_OBJ): %.gen.out: %.gen
 
 compare: $(TEST_DIR)/cmp.sh $(TEST_ASM_GEN_OBJ) $(TEST_ASM_ORIG_OJB)
 	@for file in $(TEST_OUT_ASM); do \
-		echo -n "[Testing '$(notdir $$file)'] "; \
 		./$< $$file.out $$file.gen.out; \
 	done
