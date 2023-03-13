@@ -287,14 +287,12 @@ static void decode_v(uint8_t * const image, uint offset);
 // special case for les, lds, lea (from reg field)
 static void decode_reg_l(uint8_t * const image, uint offset);
 
+static char *segregs[4] = { "es", "cs", "ss", "ds" };
 static char *regs[2][16] =
 {
 	{ "al", "cl", "dl", "bl", "ah", "ch", "dh", "bh" }, // w = 0
 	{ "ax", "cx", "dx", "bx", "sp", "bp", "si", "di" }, // w = 1
 };
-
-static char *segregs[4] = { "es", "cs", "ss", "ds" };
-
 // used in effective address calculation
 static char *ea_base[8] =
 {
@@ -998,7 +996,7 @@ struct inst_data get_inst_data(uint8_t * const image, uint offset)
 	data = inst_table[image[offset]];
 
 	if (data.type == INST_TYPE_EXTD) {
-		// NOTE: maybe there is a way to do it better, but I'm too tired
+		// NOTE: maybe there is a better way to do it, but I'm too tired
 		switch (image[offset]) {
 		case 0x80: i = 0;  break;
 		case 0x81: i = 1;  break;
