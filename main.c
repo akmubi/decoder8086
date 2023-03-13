@@ -891,9 +891,8 @@ int main(int argc, char *argv[])
 		// get label address for jump instructions
 		label_addr = get_label_addr(insts[i].type, image, offset);
 		// set bit at label address
-		if (label_addr >= 0) {
+		if (label_addr >= 0)
 			bitmap_set_bit(&bitmap_label, label_addr);
-		}
 
 		offset += insts[i].size;
 		i++;
@@ -906,9 +905,8 @@ int main(int argc, char *argv[])
 	i = offset = 0;
 	while (i < inst_count) {
 		// handle labels
-		if (bitmap_get_bit(&bitmap_label, offset) == 1) {
+		if (bitmap_get_bit(&bitmap_label, offset) == 1)
 			printf("label_%u:\n", offset);
-		}
 
 		// mnemonic
 		printf("%s", gen_inst_name(insts[i].type, image, offset));
@@ -928,11 +926,8 @@ int main(int argc, char *argv[])
 		    type != INST_TYPE_CALL &&
 		    type != INST_TYPE_RET &&
 		    type != INST_TYPE_JMP) {
-			if (FIELD_W(image[offset])) {
-				printf(" word");
-			} else {
-				printf(" byte");
-			}
+			if (FIELD_W(image[offset])) printf(" word");
+			else                        printf(" byte");
 		}
 
 		if (op1 != NULL) {
@@ -1081,32 +1076,20 @@ const char *gen_inst_name(enum inst_type type, uint8_t * const image,
 		case INST_TYPE_REPNZ:  mnem = "repne";  break;
 		case INST_TYPE_REPZ:   mnem = "rep";    break;
 		case INST_TYPE_MOVS:
-			mnem = "movsb";
-			if (FIELD_W(image[offset])) {
-				mnem = "movsw";
-			}
-
+			if (FIELD_W(image[offset])) mnem = "movsw";
+			else                        mnem = "movsb";
 			break;
 		case INST_TYPE_CMPS:
-			mnem = "cmpsb";
-			if (FIELD_W(image[offset])) {
-				mnem = "cmpsw";
-			}
-
+			if (FIELD_W(image[offset])) mnem = "cmpsw";
+			else                        mnem = "cmpsb";
 			break;
 		case INST_TYPE_SCAS:
-			mnem = "scasb";
-			if (FIELD_W(image[offset])) {
-				mnem = "scasw";
-			}
-
+			if (FIELD_W(image[offset])) mnem = "scasw";
+			else                        mnem = "scasb";
 			break;
 		case INST_TYPE_LODS:
-			mnem = "lodsb";
-			if (FIELD_W(image[offset])) {
-				mnem = "lodsw";
-			}
-
+			if (FIELD_W(image[offset])) mnem = "lodsw";
+			else                        mnem = "lodsb";
 			break;
 		case INST_TYPE_STDS:   mnem = "stds";   break;
 		case INST_TYPE_CALL:   mnem = "call";   break;
@@ -1264,9 +1247,7 @@ void decode_reg_mem(uint8_t * const image, uint offset)
 				// only low byte
 				disp &= 0x00FF;
 				// if sign bit is set then sign-extend
-				if (disp & 0x80) {
-					disp |= 0xFF00;
-				}
+				if (disp & 0x80) disp |= 0xFF00;
 
 			// [ ea_base ]
 			} else if (mod == 0b00) {
@@ -1295,11 +1276,8 @@ void decode_reg_mem(uint8_t * const image, uint offset)
 
 void decode_acc(uint8_t * const image, uint offset)
 {
-	if (FIELD_W(image[offset])) {
-		printf("ax");
-	} else {
-		printf("al");
-	}
+	if (FIELD_W(image[offset])) printf("ax");
+	else                        printf("al");
 }
 
 void decode_imm(uint8_t * const image, uint offset)
@@ -1312,9 +1290,7 @@ void decode_imm(uint8_t * const image, uint offset)
 
 	// calculate displacement size to determinte immediate value position
 	disp_size = calc_disp_size(image, offset);
-
 	imm = (inst[3 + disp_size] << 8) * w | inst[2 + disp_size];
-
 	printf("%u", imm);
 }
 
@@ -1326,14 +1302,10 @@ void decode_imm_sx(uint8_t * const image, uint offset)
 
 	// calculate displacement size to determinte immediate value position
 	disp_size = calc_disp_size(image, offset);
-
 	imm = inst[2 + disp_size];
 
 	// if sign bit is set then sign-extend
-	if (imm & 0x80) {
-		imm |= 0xFF00;
-	}
-
+	if (imm & 0x80) imm |= 0xFF00;
 	printf("%u", imm);
 }
 
@@ -1358,7 +1330,6 @@ void decode_regw(uint8_t * const image, uint offset)
 
 	w   = FIELD_W(inst[0]);
 	reg = FIELD_REG(inst[1]);
-
 	printf("%s", regs[w][reg]);
 }
 
@@ -1368,23 +1339,22 @@ void decode_mem16(uint8_t * const image, uint offset)
 	uint8_t mod = FIELD_MOD(inst[1]);
 
 	assert(mod != 0b11); // memory only
-
 	decode_reg_mem(image, offset);
 }
 
 void decode_reg_lo(uint8_t * const image, uint offset)
 {
 	uint8_t reg;
-	reg = FIELD_REG2(image[offset]);
 
+	reg = FIELD_REG2(image[offset]);
 	printf("%s", regs[0][reg]);
 }
 
 void decode_reg_hi(uint8_t * const image, uint offset)
 {
 	uint8_t reg;
-	reg = FIELD_REG2(image[offset]);
 
+	reg = FIELD_REG2(image[offset]);
 	printf("%s", regs[1][reg]);
 }
 
@@ -1394,7 +1364,6 @@ void decode_sr(uint8_t * const image, uint offset)
 	uint8_t *inst = image + offset;
 
 	sr = FIELD_SR(inst[1]);
-
 	printf("%s", segregs[sr]);
 }
 
@@ -1415,6 +1384,7 @@ void decode_addr(uint8_t * const image, uint offset)
 void decode_addr8(uint8_t * const image, uint offset)
 {
 	int addr = offset + 2;
+
 	addr += *((int8_t *)(image + offset + 1));
 	printf("label_%u", addr);
 }
@@ -1427,7 +1397,6 @@ void decode_naddr(uint8_t * const image, uint offset)
 	int16_t  addr = offset;
 
 	tmp = (inst[2] << 8) | inst[1];
-
 	addr += *((int16_t *)&tmp);
 	printf("%d", addr);
 }
@@ -1439,7 +1408,6 @@ void decode_faddr(uint8_t * const image, uint offset)
 
 	ip_addr = (inst[2] << 8) | inst[1];
 	cs_addr = (inst[4] << 8) | inst[3];
-
 	printf("%u:%u", cs_addr, ip_addr);
 }
 
@@ -1458,27 +1426,23 @@ void decode_esc(uint8_t * const image, uint offset)
 void decode_ax(uint8_t * const image,  uint offset)
 {
 	(void)image; (void)offset;
+
 	printf("ax");
 }
 
 void decode_dx(uint8_t * const image, uint offset)
 {
 	(void)image; (void)offset;
+
 	printf("dx");
 }
 
 void decode_v(uint8_t * const image, uint offset)
 {
 	uint8_t *inst = image + offset;
-	uint8_t v;
 
-	v = FIELD_V(inst[0]);
-	
-	if (v) {
-		printf("cl");
-	} else {
-		printf("1");
-	}
+	if (FIELD_V(inst[0])) printf("cl");
+	else                  printf("1");
 }
 
 void decode_reg_l(uint8_t * const image, uint offset)
