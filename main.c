@@ -140,7 +140,7 @@ enum inst_type
 	// load byte/word to al/ax
 	INST_TYPE_LODS,
 	// store byte/word to al/ax
-	INST_TYPE_STDS,
+	INST_TYPE_STOS,
 
 	/* ========================CONTROL TRANSFTER========================= */
 
@@ -495,8 +495,8 @@ struct inst_data inst_table[256] = {
 	{ INST_TYPE_CMPS,   NULL,            NULL,            1 },
 	{ INST_TYPE_TEST,   &decode_acc,     &decode_imm8,    2 },
 	{ INST_TYPE_TEST,   &decode_acc,     &decode_imm16,   3 },
-	{ INST_TYPE_STDS,   NULL,            NULL,            1 },
-	{ INST_TYPE_STDS,   NULL,            NULL,            1 },
+	{ INST_TYPE_STOS,   NULL,            NULL,            1 },
+	{ INST_TYPE_STOS,   NULL,            NULL,            1 },
 	{ INST_TYPE_LODS,   NULL,            NULL,            1 },
 	{ INST_TYPE_LODS,   NULL,            NULL,            1 },
 	{ INST_TYPE_SCAS,   NULL,            NULL,            1 },
@@ -1094,7 +1094,7 @@ const char *gen_inst_name(enum inst_type type, uint8_t * const image,
 			if (FIELD_W(image[offset])) mnem = "lodsw";
 			else                        mnem = "lodsb";
 			break;
-		case INST_TYPE_STDS:   mnem = "stds";   break;
+		case INST_TYPE_STOS:   mnem = "stos";   break;
 		case INST_TYPE_CALL:   mnem = "call";   break;
 		case INST_TYPE_JMP:    mnem = "jmp";    break;
 		case INST_TYPE_RET:    mnem = "ret";    break;
