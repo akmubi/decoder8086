@@ -32,7 +32,7 @@ clean:
 # TESTING
 #
 
-TEST_DIR     := tests
+TEST_DIR     := computer_enhance/perfaware/part1
 # list of all asm files to test
 TEST_ASM     := $(wildcard ${TEST_DIR}/*.asm)
 # dir where temporary test files will be placed
@@ -54,7 +54,7 @@ TEST_ASM_GEN_OBJ  := $(addsuffix .gen.out,${TEST_OUT_ASM})
 test: test_build_dir compare
 
 test_build_dir: build_dir
-	@-mkdir $(TEST_OUT_DIR) 2>/dev/null || true
+	@-mkdir -p $(TEST_OUT_DIR) 2>/dev/null || true
 
 # tests/0001.asm ==> build/tests/0001.asm.out
 $(TEST_ASM_ORIG_OBJ): $(TEST_OUT_DIR)/%.asm.out: $(TEST_DIR)/%.asm
@@ -68,7 +68,7 @@ $(TEST_ASM_GEN_SRC): %.gen: %.out $(APP)
 $(TEST_ASM_GEN_OBJ): %.gen.out: %.gen
 	@nasm $< -o $@
 
-compare: $(TEST_DIR)/cmp.sh $(TEST_ASM_GEN_OBJ) $(TEST_ASM_ORIG_OJB)
+compare: cmp.sh $(TEST_ASM_GEN_OBJ) $(TEST_ASM_ORIG_OJB)
 	@for file in $(TEST_OUT_ASM); do \
 		./$< $$file.out $$file.gen.out; \
 	done

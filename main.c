@@ -1094,7 +1094,10 @@ const char *gen_inst_name(enum inst_type type, uint8_t * const image,
 			if (FIELD_W(image[offset])) mnem = "lodsw";
 			else                        mnem = "lodsb";
 			break;
-		case INST_TYPE_STOS:   mnem = "stos";   break;
+		case INST_TYPE_STOS:
+			if (FIELD_W(image[offset])) mnem = "stosw";
+			else                        mnem = "stosb";
+			break;
 		case INST_TYPE_CALL:   mnem = "call";   break;
 		case INST_TYPE_JMP:    mnem = "jmp";    break;
 		case INST_TYPE_RET:    mnem = "ret";    break;
