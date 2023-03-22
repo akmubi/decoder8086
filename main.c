@@ -146,9 +146,12 @@ enum inst_type
 
 	// call
 	INST_TYPE_CALL,
+	INST_TYPE_CALLF,
 	// unconditional jump
 	INST_TYPE_JMP,
+	INST_TYPE_JMPF,
 	// return from call
+	INST_TYPE_RETF,
 	INST_TYPE_RET,
 	// jump on equal/zero
 	INST_TYPE_JE,
@@ -191,6 +194,7 @@ enum inst_type
 	// jump on cx zero
 	INST_TYPE_JCXZ,
 	// interrupt
+	INST_TYPE_INT3,
 	INST_TYPE_INT,
 	// interrupt on overflow
 	INST_TYPE_INTO,
@@ -277,8 +281,6 @@ static void decode_naddr(uint8_t * const image, uint offset);
 // far proc/label address (from ip and cs fields)
 static void decode_faddr(uint8_t * const image, uint offset);
 
-// special case for 'int 3'
-static void decode_3(uint8_t * const image, uint offset);
 // special case for 'esc opcode, source'
 static void decode_esc(uint8_t * const image, uint offset);
 // special case for 'xchg ax, dx'
@@ -479,7 +481,7 @@ struct inst_data inst_table[256] = {
 	{ INST_TYPE_XCHG,   &decode_ax,      &decode_reg_hi,  1 },
 	{ INST_TYPE_CBW,    NULL,            NULL,            1 },
 	{ INST_TYPE_CWD,    NULL,            NULL,            1 },
-	{ INST_TYPE_CALL,   &decode_faddr,   NULL,            5 },
+	{ INST_TYPE_CALL,  &decode_faddr,   NULL,            5 },
 	{ INST_TYPE_WAIT,   NULL,            NULL,            1 },
 	{ INST_TYPE_PUSHF,  NULL,            NULL,            1 },
 	{ INST_TYPE_POPF,   NULL,            NULL,            1 },
@@ -527,9 +529,9 @@ struct inst_data inst_table[256] = {
 	{ INST_TYPE_EXTD,   NULL,            NULL,            0 },
 	{ INST_TYPE_UNK,    NULL,            NULL,            1 },
 	{ INST_TYPE_UNK,    NULL,            NULL,            1 },
-	{ INST_TYPE_RET,    &decode_imm16,   NULL,            3 },
-	{ INST_TYPE_RET,    NULL,            NULL,            1 },
-	{ INST_TYPE_INT,    &decode_3,       NULL,            1 },
+	{ INST_TYPE_RETF,   &decode_imm16,   NULL,            3 },
+	{ INST_TYPE_RETF,   NULL,            NULL,            1 },
+	{ INST_TYPE_INT3,   NULL,            NULL,            1 },
 	{ INST_TYPE_INT,    &decode_imm8,    NULL,            2 },
 	{ INST_TYPE_INTO,   NULL,            NULL,            1 },
 	{ INST_TYPE_IRET,   NULL,            NULL,            1 },
@@ -778,9 +780,9 @@ struct inst_data inst_table_extd[17][8] =
 		{ INST_TYPE_INC,  &decode_mem16,   NULL,             2 },
 		{ INST_TYPE_DEC,  &decode_mem16,   NULL,             2 },
 		{ INST_TYPE_CALL, &decode_reg_mem, NULL,             2 },
-		{ INST_TYPE_CALL, &decode_mem16,   NULL,             2 },
+		{ INST_TYPE_CALLF,&decode_mem16,   NULL,             2 },
 		{ INST_TYPE_JMP,  &decode_reg_mem, NULL,             2 },
-		{ INST_TYPE_JMP,  &decode_mem16,   NULL,             2 },
+		{ INST_TYPE_JMPF, &decode_mem16,   NULL,             2 },
 		{ INST_TYPE_PUSH, &decode_mem16,   NULL,             2 },
 		// | 1111 1111 | mod 111 r/m | disp-lo | disp-hi |
 		{ INST_TYPE_UNK,  NULL,            NULL,             2 },
@@ -919,15 +921,21 @@ int main(int argc, char *argv[])
 		op2  = insts[i].op2_dec;
 		mod  = FIELD_MOD(image[offset + 1]);
 
+		if (type == INST_TYPE_CALLF || type == INST_TYPE_JMPF) {
+			printf(" far");
+		}
+
 		// print byte size if:
 		// 1. the only operand is memory
 		// 2. first operand is memory and second is not register
 		// 3. operand not one of the jump instructions
 		if (((op1 == &decode_mem16 && op2 == NULL) ||
 		    (op1 == &decode_reg_mem && mod != 0b11 &&
-		     op2 != &decode_regw)) &&
+		     op2 != &decode_regw &&
+		     op2 != &decode_sr)) &&
 		    type != INST_TYPE_CALL &&
 		    type != INST_TYPE_RET &&
+		    type != INST_TYPE_RETF &&
 		    type != INST_TYPE_JMP) {
 			if (FIELD_W(image[offset])) printf(" word");
 			else                        printf(" byte");
@@ -1098,8 +1106,11 @@ const char *gen_inst_name(enum inst_type type, uint8_t * const image,
 			if (FIELD_W(image[offset])) mnem = "stosw";
 			else                        mnem = "stosb";
 			break;
+		case INST_TYPE_CALLF:
 		case INST_TYPE_CALL:   mnem = "call";   break;
+		case INST_TYPE_JMPF:
 		case INST_TYPE_JMP:    mnem = "jmp";    break;
+		case INST_TYPE_RETF:   mnem = "retf";    break;
 		case INST_TYPE_RET:    mnem = "ret";    break;
 		case INST_TYPE_JE:     mnem = "je";     break;
 		case INST_TYPE_JL:     mnem = "jl";     break;
@@ -1121,6 +1132,7 @@ const char *gen_inst_name(enum inst_type type, uint8_t * const image,
 		case INST_TYPE_LOOPE:  mnem = "loope";  break;
 		case INST_TYPE_LOOPNE: mnem = "loopne"; break;
 		case INST_TYPE_JCXZ:   mnem = "jcxz";   break;
+		case INST_TYPE_INT3:   mnem = "int3";    break;
 		case INST_TYPE_INT:    mnem = "int";    break;
 		case INST_TYPE_INTO:   mnem = "into";   break;
 		case INST_TYPE_IRET:   mnem = "iret";   break;
@@ -1404,7 +1416,7 @@ void decode_naddr(uint8_t * const image, uint offset)
 
 	tmp = (inst[2] << 8) | inst[1];
 	addr += *((int16_t *)&tmp);
-	printf("%d", addr);
+	printf("%d", addr + 3);
 }
 
 void decode_faddr(uint8_t * const image, uint offset)
@@ -1415,13 +1427,6 @@ void decode_faddr(uint8_t * const image, uint offset)
 	ip_addr = (inst[2] << 8) | inst[1];
 	cs_addr = (inst[4] << 8) | inst[3];
 	printf("%u:%u", cs_addr, ip_addr);
-}
-
-void decode_3(uint8_t * const image, uint offset)
-{
-	(void)image; (void)offset;
-
-	printf("3");
 }
 
 void decode_esc(uint8_t * const image, uint offset)
