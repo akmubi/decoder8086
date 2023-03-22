@@ -481,7 +481,7 @@ struct inst_data inst_table[256] = {
 	{ INST_TYPE_XCHG,   &decode_ax,      &decode_reg_hi,  1 },
 	{ INST_TYPE_CBW,    NULL,            NULL,            1 },
 	{ INST_TYPE_CWD,    NULL,            NULL,            1 },
-	{ INST_TYPE_CALL,  &decode_faddr,   NULL,            5 },
+	{ INST_TYPE_CALL,   &decode_faddr,   NULL,            5 },
 	{ INST_TYPE_WAIT,   NULL,            NULL,            1 },
 	{ INST_TYPE_PUSHF,  NULL,            NULL,            1 },
 	{ INST_TYPE_POPF,   NULL,            NULL,            1 },
@@ -934,6 +934,7 @@ int main(int argc, char *argv[])
 		     op2 != &decode_regw &&
 		     op2 != &decode_sr)) &&
 		    type != INST_TYPE_CALL &&
+		    type != INST_TYPE_CALLF &&
 		    type != INST_TYPE_RET &&
 		    type != INST_TYPE_RETF &&
 		    type != INST_TYPE_JMP) {
