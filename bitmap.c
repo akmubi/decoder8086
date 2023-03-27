@@ -7,19 +7,20 @@
 #define WORD_OFFSET(index) ((index) / BITS_PER_WORD)
 #define BIT_OFFSET(index)  ((index) % BITS_PER_WORD)
 
-void bitmap_init(struct bitmap *map, size_t bit_count)
+int bitmap_init(struct bitmap *map, size_t bit_count)
 {
 	assert(map != NULL);
 	assert(bit_count > 0);
 
 	map->size = WORD_OFFSET(bit_count) + (BIT_OFFSET(bit_count) > 0);
 	map->data = calloc(map->size, sizeof(*map->data));
+
+	if (!map->data) return -1;
+	return 0;
 }
 
 void bitmap_free(struct bitmap *map)
 {
-	assert(map != NULL);
-
 	free(map->data);
 	map->data = NULL;
 }

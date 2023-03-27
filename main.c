@@ -281,6 +281,9 @@ static void decode_naddr(uint8_t * const image, uint offset);
 // far proc/label address (from ip and cs fields)
 static void decode_faddr(uint8_t * const image, uint offset);
 
+// register/memory (from mod, r/m and disp fields)
+static void decode_reg_mem16(uint8_t * const image, uint offset);
+
 // special case for 'esc opcode, source'
 static void decode_esc(uint8_t * const image, uint offset);
 // special case for 'xchg ax, dx'
@@ -635,10 +638,10 @@ struct inst_data inst_table_extd[17][8] =
 	},
 	{
 		// | 1000 1100 | mod 0 sr r/m | disp-lo | disp-hi |
-		{ INST_TYPE_MOV,  &decode_reg_mem, &decode_sr,       2 },
-		{ INST_TYPE_MOV,  &decode_reg_mem, &decode_sr,       2 },
-		{ INST_TYPE_MOV,  &decode_reg_mem, &decode_sr,       2 },
-		{ INST_TYPE_MOV,  &decode_reg_mem, &decode_sr,       2 },
+		{ INST_TYPE_MOV,  &decode_reg_mem16, &decode_sr,     2 },
+		{ INST_TYPE_MOV,  &decode_reg_mem16, &decode_sr,     2 },
+		{ INST_TYPE_MOV,  &decode_reg_mem16, &decode_sr,     2 },
+		{ INST_TYPE_MOV,  &decode_reg_mem16, &decode_sr,     2 },
 		// | 1000 1100 | mod 1 xx r/m |
 		{ INST_TYPE_UNK,  NULL,            NULL,             2 },
 		{ INST_TYPE_UNK,  NULL,            NULL,             2 },
@@ -647,10 +650,10 @@ struct inst_data inst_table_extd[17][8] =
 	},
 	{
 		// | 1000 1110 | mod 0 sr r/m | disp-lo | disp-hi |
-		{ INST_TYPE_MOV,  &decode_sr,      &decode_reg_mem,  2 },
-		{ INST_TYPE_MOV,  &decode_sr,      &decode_reg_mem,  2 },
-		{ INST_TYPE_MOV,  &decode_sr,      &decode_reg_mem,  2 },
-		{ INST_TYPE_MOV,  &decode_sr,      &decode_reg_mem,  2 },
+		{ INST_TYPE_MOV,  &decode_sr,    &decode_reg_mem16,  2 },
+		{ INST_TYPE_MOV,  &decode_sr,    &decode_reg_mem16,  2 },
+		{ INST_TYPE_MOV,  &decode_sr,    &decode_reg_mem16,  2 },
+		{ INST_TYPE_MOV,  &decode_sr,    &decode_reg_mem16,  2 },
 		// | 1000 1110 | mod 1 xx r/m |
 		{ INST_TYPE_UNK,  NULL,            NULL,             2 },
 		{ INST_TYPE_UNK,  NULL,            NULL,             2 },
@@ -861,7 +864,8 @@ int main(int argc, char *argv[])
 		op1 = inst.op1_dec;
 		op2 = inst.op2_dec;
 		if (op1 == &decode_reg_mem || op2 == &decode_reg_mem ||
-		    op1 == &decode_mem16   || op2 == &decode_mem16) {
+		    op1 == &decode_mem16   || op2 == &decode_mem16 ||
+		    op1 == &decode_reg_mem16 || op2 == &decode_reg_mem16) {
 			// add displacement size to total instruction size
 			inst.size += calc_disp_size(image, offset);
 		}
@@ -890,7 +894,8 @@ int main(int argc, char *argv[])
 
 		// add displacement size if necessary
 		if (op1 == &decode_reg_mem || op2 == &decode_reg_mem ||
-		    op1 == &decode_mem16   || op2 == &decode_mem16) {
+		    op1 == &decode_mem16   || op2 == &decode_mem16 ||
+		    op1 == &decode_reg_mem16 || op2 == &decode_reg_mem16) {
 			insts[i].size += calc_disp_size(image, offset);
 		}
 		// get label address for jump instructions
@@ -1428,6 +1433,60 @@ void decode_faddr(uint8_t * const image, uint offset)
 	ip_addr = (inst[2] << 8) | inst[1];
 	cs_addr = (inst[4] << 8) | inst[3];
 	printf("%u:%u", cs_addr, ip_addr);
+}
+
+void decode_reg_mem16(uint8_t * const image, uint offset)
+{
+	int   len;
+	char  ea_str[64];
+	char *op;
+
+	uint8_t  mod, r_m;
+	uint8_t *inst = image + offset;
+	int16_t disp;
+
+	mod = FIELD_MOD(inst[1]);
+	r_m = FIELD_RM(inst[1]);
+
+	op = regs[1][r_m];
+
+	if (mod != 0b11) {
+		disp = (inst[3] << 8) | inst[2];
+
+		if (mod == 0b00 && r_m == 0b110) {
+			len = snprintf(ea_str, sizeof(ea_str), "[%u]",
+			               disp & 0xFFFF);
+		} else {
+			// [ ea_base + d8 ]
+			if (mod == 0b01) {
+				// only low byte
+				disp &= 0x00FF;
+				// if sign bit is set then sign-extend
+				if (disp & 0x80) disp |= 0xFF00;
+
+			// [ ea_base ]
+			} else if (mod == 0b00) {
+				// no displacement
+				disp = 0;
+			}
+
+			len = snprintf(ea_str, sizeof(ea_str), "[%s",
+			               ea_base[r_m]);
+			if (disp != 0) {
+				len += snprintf(ea_str + len,
+				                sizeof(ea_str) - len, " %c %d",
+				                (disp < 0) ? '-' : '+',
+				                abs(disp));
+			}
+
+			len += snprintf(ea_str + len, sizeof(ea_str) - len,
+			                "]");
+		}
+
+		op = ea_str;
+	}
+
+	printf("%s", op);
 }
 
 void decode_esc(uint8_t * const image, uint offset)

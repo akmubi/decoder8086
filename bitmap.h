@@ -10,7 +10,7 @@ struct bitmap
 	size_t    size;
 };
 
-extern void bitmap_init(struct bitmap *map, size_t bit_count);
+extern int  bitmap_init(struct bitmap *map, size_t bit_count);
 extern void bitmap_free(struct bitmap *map);
 
 extern int bitmap_set_bit(struct bitmap *map, size_t bit_id);
