@@ -13,7 +13,7 @@ int main(int argc, char *argv[])
 
 	uint offset = 0;
 	int inst_count = 0;
-	struct inst_data *insts = NULL;
+	struct inst *insts = NULL;
 
 	if (argc != 2) {
 		fprintf(stderr, "Usage: %s <assembled-file>\n", argv[0]);
@@ -67,26 +67,26 @@ int main(int argc, char *argv[])
 	fprintf(stdout, "; %s\nbits 16\n\n", argv[1]);
 
 	for (i = 0, offset = 0; i < inst_count && offset < size; ++i) {
-		rc = decode_inst(stdout, insts[i], image, size, offset);
+		rc = decode_inst(stdout, insts + i);
 		if (rc < 0) {
 			fprintf(stderr, "failed to decode instruction "
 			                "(exit code %d)\n", rc);
 			return -7;
 		}
 
-		switch (insts[i].type) {
+		switch (insts[i].base.type) {
+		case INST_SGMNT:
+			break;
 		case INST_LOCK:
 		case INST_REP:
 		case INST_REPNE:
 			fputc(' ', stdout);
 			break;
-		case INST_SGMNT:
-			break;
 		default:
 			fputc('\n', stdout);
 		}
 
-		offset += insts[i].size;
+		offset += insts[i].base.size;
 	}
 
 	return 0;

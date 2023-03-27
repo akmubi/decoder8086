@@ -18,63 +18,41 @@ static char *regs[2][16] =
 
 static const char *gen_name(enum inst_type type);
 
-struct decode_ctx
-{
-	struct inst_data *data;
-	uint8 * const image;
-	uint size;
-	uint offset;
-};
+typedef void (*decode_fn)(FILE *, struct inst *);
 
-typedef void (*decode_fn)(FILE *, struct decode_ctx);
+static void decode_rm   (FILE *out, struct inst *inst);
+static void decode_sr   (FILE *out, struct inst *inst);
+static void decode_reg  (FILE *out, struct inst *inst);
+static void decode_v    (FILE *out, struct inst *inst);
+static void decode_imm  (FILE *out, struct inst *inst);
+static void decode_acc  (FILE *out, struct inst *inst);
+static void decode_dx   (FILE *out, struct inst *inst);
+static void decode_imm8 (FILE *out, struct inst *inst);
+static void decode_reg2 (FILE *out, struct inst *inst);
+static void decode_mem  (FILE *out, struct inst *inst);
+static void decode_addr (FILE *out, struct inst *inst);
+static void decode_naddr(FILE *out, struct inst *inst);
+static void decode_faddr(FILE *out, struct inst *inst);
 
-static void decode_rm   (FILE *out, struct decode_ctx ctx);
-static void decode_sr   (FILE *out, struct decode_ctx ctx);
-static void decode_reg  (FILE *out, struct decode_ctx ctx);
-static void decode_v    (FILE *out, struct decode_ctx ctx);
-static void decode_imm  (FILE *out, struct decode_ctx ctx);
-static void decode_acc  (FILE *out, struct decode_ctx ctx);
-static void decode_dx   (FILE *out, struct decode_ctx ctx);
-static void decode_imm8 (FILE *out, struct decode_ctx ctx);
-static void decode_reg2 (FILE *out, struct decode_ctx ctx);
-static void decode_mem  (FILE *out, struct decode_ctx ctx);
-static void decode_addr (FILE *out, struct decode_ctx ctx);
-static void decode_naddr(FILE *out, struct decode_ctx ctx);
-static void decode_faddr(FILE *out, struct decode_ctx ctx);
-
-int decode_inst(FILE *out, struct inst_data data, uint8 * const image,
-                uint size, uint offset)
+int decode_inst(FILE *out, struct inst *inst)
 {
 	decode_fn op1 = NULL, op2 = NULL, tmp;
-	struct decode_ctx ctx = {
-		.data   = &data,
-		.image  = image,
-		.size   = size,
-		.offset = offset,
-	};
 
-	if (!out || !image) {
+	if (!out || !inst) {
 		fprintf(stderr, "invalid arguments (out: %p, image: %p)\n", out,
-		        image);
+		        inst);
 		return -1;
 	}
 
-	if (offset + data.size > size) {
-		fprintf(stderr, "out of image boundaries (offset: %u, "
-		        "inst_size: %u, image_size: %u)\n", offset, data.size,
-		        size);
-		return -2;
+	if (inst->base.flags & FLAG_LB) {
+		fprintf(out, "label_%u:\n", inst->offset);
 	}
 
-	if (data.flags & FLAG_LB) {
-		fprintf(out, "label_%u:\n", offset);
-	}
+	fprintf(out, "%s", gen_name(inst->base.type));
 
-	fprintf(out, "%s", gen_name(data.type));
+	if (inst->base.prefixes & PFX_FAR) fprintf(out, " far");
 
-	if (data.prefixes & PFX_FAR) fprintf(out, " far");
-
-	switch (data.fmt) {
+	switch (inst->base.fmt) {
 	case INST_FMT_RM:
 		op1 = decode_rm;
 		break;
@@ -143,7 +121,7 @@ int decode_inst(FILE *out, struct inst_data data, uint8 * const image,
 		break;
 	}
 
-	if (data.flags & FLAG_D) {
+	if (inst->base.flags & FLAG_D) {
 		tmp = op1;
 		op1 = op2;
 		op2 = tmp;
@@ -151,12 +129,12 @@ int decode_inst(FILE *out, struct inst_data data, uint8 * const image,
 
 	if (op1) {
 		fputc(' ', out);
-		op1(out, ctx);
+		op1(out, inst);
 	}
 
 	if (op2) {
 		fprintf(out, ", ");
-		op2(out, ctx);
+		op2(out, inst);
 	}
 
 	return 0;
@@ -276,15 +254,15 @@ const char *gen_name(enum inst_type type)
 	return "<unknown>";
 }
 
-void decode_rm(FILE *out, struct decode_ctx ctx)
+void decode_rm(FILE *out, struct inst *inst)
 {
 	int   len;
 	char  ea_str[64];
 	char *op;
-	uint8* inst = ctx.image + ctx.offset;
 
 	uint8  w, mod, r_m;
-	int16 disp;
+
+	int16 disp = *((int16 *)&inst->disp);
 
 	static char *ea_base[8] =
 	{
@@ -298,15 +276,13 @@ void decode_rm(FILE *out, struct decode_ctx ctx)
 		"bx",
 	};
 
-	w   = W(ctx.data->flags);
-	mod = FIELD_MOD(inst[1]);
-	r_m = FIELD_RM(inst[1]);
+	w   = W(inst->base.flags);
+	mod = FIELD_MOD(inst->fields);
+	r_m = FIELD_RM(inst->fields);
 
 	op = regs[w][r_m];
 
 	if (mod != 0b11) {
-		disp = (inst[3] << 8) | inst[2];
-
 		if (mod == 0b00 && r_m == 0b110) {
 			len = snprintf(ea_str, sizeof(ea_str), "[%u]",
 			               disp & 0xFFFF);
@@ -339,123 +315,89 @@ void decode_rm(FILE *out, struct decode_ctx ctx)
 
 		op = ea_str;
 
-		if (ctx.data->prefixes & PFX_WIDE) {
+		if (inst->base.prefixes & PFX_WIDE) {
 			fprintf(out, "%s ", w ? "word" : "byte");
 		}
 
-		if (ctx.data->prefixes & PFX_SGMNT) {
-			fprintf(out, "%s:", segregs[SGMNT_OP(ctx.data->prefixes)]);
+		if (inst->base.prefixes & PFX_SGMNT) {
+			fprintf(out, "%s:", segregs[SGMNT_OP(inst->base.prefixes)]);
 		}
 	}
 
 	fprintf(out, "%s", op);
 }
 
-void decode_reg(FILE *out, struct decode_ctx ctx)
+void decode_reg(FILE *out, struct inst *inst)
 {
 	uint8 w, reg;
-	uint8 *inst = ctx.image + ctx.offset;
 
-	w   = W(ctx.data->flags);
-	reg = FIELD_REG(inst[1]);
+	w   = W(inst->base.flags);
+	reg = FIELD_REG(inst->fields);
 
 	fprintf(out, "%s", regs[w][reg]);
 }
 
-void decode_sr(FILE *out, struct decode_ctx ctx)
+void decode_sr(FILE *out, struct inst *inst)
 {
-	fprintf(out, "%s", segregs[SR_OP(ctx.data->flags)]);
+	fprintf(out, "%s", segregs[SR_OP(inst->base.flags)]);
 }
 
-void decode_v(FILE *out, struct decode_ctx ctx)
+void decode_v(FILE *out, struct inst *inst)
 {
-	fprintf(out, "%s", (ctx.data->flags & FLAG_V) ? "cl" : "1");
+	fprintf(out, "%s", (inst->base.flags & FLAG_V) ? "cl" : "1");
 }
 
-void decode_imm(FILE *out, struct decode_ctx ctx)
+void decode_imm(FILE *out, struct inst *inst)
 {
-	uint8 lo = 0, hi = 0;
-	uint imm_size = 1;
-	uint16 imm = 0;
-	uint8 *inst = ctx.image + ctx.offset;
-
-	if (ctx.data->flags & FLAG_S) {
-		fprintf(out, "%d", inst[ctx.data->size - imm_size]);
-		return;
-	}
-
-	if (W(ctx.data->flags)) {
-		imm_size = 2;
-		hi = inst[ctx.data->size - imm_size + 1];
-	}
-
-	lo = inst[ctx.data->size - imm_size];
-	imm = (hi << 8) | lo;
-
-	fprintf(out, "%u", imm);
+	int16 imm = *((int16 *)&inst->data);
+	fprintf(out, "%d", imm);
 }
 
-void decode_acc(FILE *out, struct decode_ctx ctx)
+void decode_acc(FILE *out, struct inst *inst)
 {
-	fprintf(out, "%s", regs[W(ctx.data->flags)][0]);
+	fprintf(out, "%s", regs[W(inst->base.flags)][0]);
 }
 
-void decode_dx(FILE *out, struct decode_ctx ctx)
+void decode_dx(FILE *out, struct inst *inst)
 {
-	(void)ctx;
+	(void)inst;
 	fprintf(out, "dx");
 }
 
-void decode_imm8(FILE *out, struct decode_ctx ctx)
+void decode_imm8(FILE *out, struct inst *inst)
 {
-	uint8 imm = ctx.image[ctx.offset + ctx.data->size - 1];
-	fprintf(out, "%u", imm & 0xFF);
+	fprintf(out, "%u", inst->data & 0xFF);
 }
 
-void decode_reg2(FILE *out, struct decode_ctx ctx)
+void decode_reg2(FILE *out, struct inst *inst)
 {
 	uint8 w, reg;
-	uint8 *inst = ctx.image + ctx.offset;
 
-	w   = W(ctx.data->flags);
-	reg = FIELD_REG2(inst[0]);
+	w   = W(inst->base.flags);
+	reg = FIELD_REG(inst->fields);
 
 	fprintf(out, "%s", regs[w][reg]);
 }
 
-void decode_mem(FILE *out, struct decode_ctx ctx)
+void decode_mem(FILE *out, struct inst *inst)
 {
-	uint8* inst = ctx.image + ctx.offset;
-
-	uint16 addr = (inst[2] << 8) | inst[1];
-	fprintf(out, "[%u]", addr & 0xFFFF);
+	fprintf(out, "[%u]", inst->data & 0xFFFF);
 }
 
-void decode_addr(FILE *out, struct decode_ctx ctx)
+void decode_addr(FILE *out, struct inst *inst)
 {
-	int addr = get_jmp_offset(*ctx.data, ctx.image, ctx.size, ctx.offset);
+	int addr = get_jmp_offset(inst);
 	fprintf(out, "label_%u", addr);
 }
 
-void decode_naddr(FILE *out, struct decode_ctx ctx)
+void decode_naddr(FILE *out, struct inst *inst)
 {
-	uint16_t tmp;
-	uint8_t *inst = ctx.image + ctx.offset;
-	int16_t  addr = ctx.offset + 3;
-
-	tmp = (inst[2] << 8) | inst[1];
-	addr += *((int16_t *)&tmp);
-
+	int16_t addr = *((int16 *)&inst->data);
 	fprintf(out, "%d", addr);
 }
 
-void decode_faddr(FILE *out, struct decode_ctx ctx)
+void decode_faddr(FILE *out, struct inst *inst)
 {
-	uint8 *inst = ctx.image + ctx.offset;
-	uint16 ip_addr, cs_addr;
-
-	ip_addr = (inst[2] << 8) | inst[1];
-	cs_addr = (inst[4] << 8) | inst[3];
-	fprintf(out, "%u:%u", cs_addr & 0xFFFF, ip_addr & 0xFFFF);
+	fprintf(out, "%u:%u", inst->data_ext & 0xFFFF, inst->data & 0xFFFF);
 }
 

@@ -4,12 +4,27 @@
 #include "inst.h"
 #include "bitmap.h"
 
+#define W(flags) (!!((flags) & FLAG_W))
+
+#define SR(byte)   (((byte) >> 3) & 0b11)
+#define MOD(byte)  (((byte) >> 6) & 0b11)
+#define RM(byte)   (((byte) >> 0) & 0b111)
+#define REG(byte)  (((byte) >> 3) & 0b111)
+// another place where registers can be
+#define REG2(byte) (((byte) >> 0) & 0b111)
+// esc instruction opcode
+#define ESC1(byte) (((byte) >> 0) & 0b111)
+#define ESC2(byte) (((byte) >> 3) & 0b111)
+// extended opcode
+#define EXTD(byte) (((byte) >> 3) & 0b111)
+
 #define ERR_OUT_BOUNDS(offset, inst_size, image_size) \
 	fprintf(stderr, "out of image boundaries (offset: %u, "\
 	        "inst_size: %u, image_size: %u)\n", (offset),\
 	        (inst_size), (image_size))
 
 static uint calc_disp_size(uint8 * const image, uint offset);
+static uint16 get_disp(uint8 * const image, uint offset);
 
 struct inst_data inst_table[256] =
 {
@@ -462,44 +477,35 @@ struct inst_data inst_table_extd[17][8] =
 	},
 };
 
-int get_jmp_offset(struct inst_data data, uint8 * const image, uint size,
-                   uint offset)
+int get_jmp_offset(struct inst *inst)
 {
 	int    label_addr = 0;
 	uint8  tmp8;
 	uint16 tmp16;
 
-	switch (data.fmt) {
+	switch (inst->base.fmt) {
 	case INST_FMT_JMP_SHORT:
-		if (offset + 1 > size) {
-			ERR_OUT_BOUNDS(offset, 2, size);
-			return -1;
-		}
-
-		tmp8        = image[offset + 1];
-		label_addr  = offset + 2;
-		label_addr += *((int8 *)&tmp8);
+		tmp8 = inst->data & 0xFF;
+		label_addr = inst->offset + 2 + *((int8 *)&tmp8);
 		break;
 	case INST_FMT_JMP_NEAR:
-		if (offset + 2 > size) {
-			ERR_OUT_BOUNDS(offset, 3, size);
-			return -2;
-		}
-
-		tmp16      = (image[offset + 2] << 8) | image[offset + 1];
-		label_addr = offset + 3 + *((int16 *)&tmp16);
+		tmp16 = inst->data;
+		label_addr = inst->offset + 3 + *((int16 *)&tmp16);
 	default:
-		return -3;
+		return -1;
 	}
 
 	return label_addr;
 }
 
-int get_inst_data(struct inst_data *data, uint8 * const image, uint size,
+int get_inst_data(struct inst *inst, uint8 * const image, uint size,
                   uint offset)
 {
-	uint8 extd_op = 0, i = 0;
+	uint8 extd_op  = 0, i = 0;
 	struct inst_data tmp;
+
+	uint8 lo = 0, hi = 0;
+	uint data_size   = 1;
 
 	tmp = inst_table[image[offset]];
 	if (tmp.type == INST_EXTD) {
@@ -525,7 +531,7 @@ int get_inst_data(struct inst_data *data, uint8 * const image, uint size,
 			assert(image[offset] != image[offset]);
 		}
 
-		extd_op = FIELD_EXTD(image[offset + 1]);
+		extd_op = EXTD(image[offset + 1]);
 		tmp    = inst_table_extd[i][extd_op];
 	}
 
@@ -534,7 +540,7 @@ int get_inst_data(struct inst_data *data, uint8 * const image, uint size,
 		return -1;
 	}
 
-	// also calculate displacemnt size if instruction has form:
+	// also save displacement and mod, r/m fields if instruction has form:
 	// [mod ... r/m] [disp-lo] [disp-hi]
 	switch (tmp.fmt) {
 	case INST_FMT_RM:
@@ -543,7 +549,71 @@ int get_inst_data(struct inst_data *data, uint8 * const image, uint size,
 	case INST_FMT_RM_REG:
 	case INST_FMT_RM_IMM:
 	case INST_FMT_RM_ESC:
-		tmp.size += calc_disp_size(image, offset);
+		tmp.size     += calc_disp_size(image, offset);
+		inst->disp    = get_disp(image, offset);
+		inst->fields |= (MOD(image[offset + 1]) & 0b11)  << 0;
+		inst->fields |= (RM(image[offset + 1])  & 0b111) << 4;
+	default:
+		break;
+	}
+
+	// save sr field
+	switch (tmp.fmt) {
+	case INST_FMT_SR:
+		inst->fields |= (SR(image[offset]) & 0b111) << 2;
+		break;
+	case INST_FMT_RM_SR:
+		inst->fields |= (SR(image[offset + 1]) & 0b111) << 2;
+		break;
+	default:
+		break;
+	}
+
+	// save reg field
+	switch (tmp.fmt) {
+	case INST_FMT_REG:
+	case INST_FMT_ACC_REG:
+	case INST_FMT_REG_IMM:
+		inst->fields |= (REG2(image[offset]) & 0b111) << 7;
+		break;
+	case INST_FMT_RM_REG:
+		inst->fields |= (REG(image[offset + 1]) & 0b111) << 7;
+		break;
+	default:
+		break;
+	}
+
+	// save data/addr fields
+	switch (tmp.fmt) {
+	case INST_FMT_IMM:
+	case INST_FMT_ACC_IMM:
+	case INST_FMT_REG_IMM:
+	case INST_FMT_RM_IMM:
+		if (tmp.flags & FLAG_S) {
+			inst->data = (0xFF << 8) * W(tmp.flags) |
+			             image[offset + tmp.size - data_size];
+		}
+
+		if (W(tmp.flags)) {
+			data_size = 2;
+			hi = image[offset + tmp.size - data_size + 1];
+		}
+
+		lo = image[offset + tmp.size - data_size];
+		inst->data = (hi << 8) | lo;
+		break;
+	case INST_FMT_ACC_IMM8:
+	case INST_FMT_JMP_SHORT:
+		inst->data = image[offset + 1];
+		break;
+	case INST_FMT_ACC_MEM:
+	case INST_FMT_JMP_NEAR:
+		inst->data = (image[offset + 2] << 8) | image[offset + 1];
+		break;
+	case INST_FMT_JMP_FAR:
+		inst->data     = (image[offset + 2] << 8) | image[offset + 1];
+		inst->data_ext = (image[offset + 4] << 8) | image[offset + 3];
+		break;
 	default:
 		break;
 	}
@@ -553,36 +623,37 @@ int get_inst_data(struct inst_data *data, uint8 * const image, uint size,
 		return -2;
 	}
 
-	*data = tmp;
+	inst->offset = offset;
+	inst->base   = tmp;
 
 	return 0;
 }
 
-int inst_scan_image(struct inst_data * const insts, uint count,
+int inst_scan_image(struct inst * const insts, uint count,
                     uint8 * const image, uint size)
 {
 	int rc = 0;
 	int label_addr = 0;
 	uint i, offset = 0;
 	uint8 prefixes = 0;
-	struct inst_data data;
+	struct inst inst;
 	struct bitmap labels;
 
 	// return instruction count if insts is NULL
 	if (!insts) {
 		for (count = 0; offset < size; ++count) {
-			if (get_inst_data(&data, image, size, offset) < 0) {
-				fprintf(stderr, "failed to get instruction data\n");
+			if (get_inst_data(&inst, image, size, offset) < 0) {
+				fprintf(stderr, "failed to get instruction\n");
 				return -1;
 			}
 
-			if (data.type == INST_UNK) {
+			if (inst.base.type == INST_UNK) {
 				fprintf(stderr, "unknown instruction "
 				        "encountered: 0x%02X\n", image[offset]);
 				return -2;
 			}
 
-			offset += data.size;
+			offset += inst.base.size;
 		}
 
 		return count;
@@ -601,7 +672,7 @@ int inst_scan_image(struct inst_data * const insts, uint count,
 			goto free_and_exit;
 		}
 
-		if (insts[i].type == INST_UNK) {
+		if (insts[i].base.type == INST_UNK) {
 			fprintf(stderr, "unknown instruction encountered: "
 			        "0x%02X\n", image[offset]);
 			rc = -2;
@@ -609,12 +680,12 @@ int inst_scan_image(struct inst_data * const insts, uint count,
 		}
 
 		// handle explicit prefixes
-		switch (insts[i].type) {
+		switch (insts[i].base.type) {
 		case INST_LOCK:
 			prefixes |= PFX_LOCK;
 			break;
 		case INST_SGMNT:
-			prefixes |= insts[i].flags;
+			prefixes |= insts[i].base.flags;
 			prefixes |= PFX_SGMNT;
 			break;
 		case INST_REP:
@@ -625,25 +696,25 @@ int inst_scan_image(struct inst_data * const insts, uint count,
 			break;
 		// if it isn't a prefix instruction, assign accumulated prefixes
 		default:
-			insts[i].prefixes |= prefixes;
+			insts[i].base.prefixes |= prefixes;
 			prefixes = 0;
 		}
 
-		label_addr = get_jmp_offset(insts[i], image, size, offset);
+		label_addr = get_jmp_offset(insts + i);
 		if (label_addr >= 0) {
 			bitmap_set_bit(&labels, label_addr);
 		}
 
-		offset += insts[i].size;
+		offset += insts[i].base.size;
 	}
 
 	// setting FLAG_LB flag for label generation
 	for (i = 0, offset = 0; i < count && offset < size; ++i) {
 		if (bitmap_get_bit(&labels, offset) > 0) {
-			insts[i].flags |= FLAG_LB;
+			insts[i].base.flags |= FLAG_LB;
 		}
 
-		offset += insts[i].size;
+		offset += insts[i].base.size;
 	}
 
 free_and_exit:
@@ -657,8 +728,8 @@ uint calc_disp_size(uint8 * const image, uint offset)
 	uint8 mod, r_m;
 	uint8 *inst = image + offset;
 
-	mod = FIELD_MOD(inst[1]);
-	r_m = FIELD_RM(inst[1]);
+	mod = MOD(inst[1]);
+	r_m = RM(inst[1]);
 
 	// direct address and 16-bit displacement
 	if ((mod == 0b00 && r_m == 0b110) || mod == 0b10)
@@ -669,5 +740,14 @@ uint calc_disp_size(uint8 * const image, uint offset)
 		return 1;
 
 	return 0;
+}
+
+uint16 get_disp(uint8 * const image, uint offset)
+{
+	uint   size = calc_disp_size(image, offset);
+	uint16 disp = image[offset + 2];
+	disp |= (image[offset + 2] << 8) * (size > 1);
+
+	return disp;
 }
 

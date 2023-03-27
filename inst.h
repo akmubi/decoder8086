@@ -31,17 +31,11 @@
 
 #define SGMNT_OP(prefixes) (((prefixes) >> 4) & 0b11)
 
-#define FIELD_SR(byte)   (((byte) >> 3) & 0b11)
-#define FIELD_MOD(byte)  (((byte) >> 6) & 0b11)
-#define FIELD_RM(byte)   (((byte) >> 0) & 0b111)
-#define FIELD_REG(byte)  (((byte) >> 3) & 0b111)
-// another place where registers can be
-#define FIELD_REG2(byte) (((byte) >> 0) & 0b111)
-// esc instruction opcode
-#define FIELD_ESC1(byte) (((byte) >> 0) & 0b111)
-#define FIELD_ESC2(byte) (((byte) >> 3) & 0b111)
-// extended opcode
-#define FIELD_EXTD(byte) (((byte) >> 3) & 0b111)
+#define FIELD_MOD(byte) (((byte) >>  0) & 0b11)
+#define FIELD_SR(byte)  (((byte) >>  2) & 0b11)
+#define FIELD_RM(byte)  (((byte) >>  4) & 0b111)
+#define FIELD_REG(byte) (((byte) >>  7) & 0b111)
+#define FIELD_ESC(byte) (((byte) >> 10) & 0b111111)
 
 enum inst_format
 {
@@ -207,21 +201,30 @@ struct inst_data
 	uint8            size;
 };
 
+struct inst
+{
+	struct inst_data base;
+	uint16 disp;
+	uint16 data;     // addr, imm
+	uint16 data_ext; // if instruction size is 6 bytes
+	uint16 fields;   // mod, reg, r/m, sr, esc
+	uint   offset;   // location in image
+};
+
 // Calculates target offset of a jmp instruction (call, jmp, jne etc). Returns
 // offset on success and negative value if error occurred.
-extern int get_jmp_offset(struct inst_data data, uint8 * const image, uint size,
-                          uint offset);
+extern int get_jmp_offset(struct inst *inst);
 
 // extracts instruction data from 'image' at given 'offset'. Returns 0 on
 // success and negative value if error occurred.
-extern int get_inst_data(struct inst_data *data, uint8 * const image, uint size,
-                         uint offset);
+extern int get_inst(struct inst *inst, uint8 * const image, uint size,
+                    uint offset);
 
 // Extracts instructions from 'image' and writes 'count' instructions into
 // 'insts' array. If 'insts' is NULL, function returns instruction count. If
 // invalid instruction is encountered or error occurred negative value is
 // returned. Returns 0 on success.
-extern int inst_scan_image(struct inst_data * const insts, uint count,
+extern int inst_scan_image(struct inst * const insts, uint count,
                            uint8 * const image, uint size);
 
 #endif /* INST_H */
