@@ -14,6 +14,8 @@
 #define FLAG_MO (0b1  << 6) // memory only
 #define FLAG_LB (0b1  << 7) // has label
 
+#define SR_OP(flags) (((flags) >> 4) & 0b11)
+
 // implicit prefixes
 #define PFX_WIDE     (0b1  << 0)
 #define PFX_FAR      (0b1  << 1)
@@ -26,6 +28,8 @@
 #define PFX_SGMNT_DS (0b11 << 4)
 #define PFX_REP      (0b1  << 6)
 #define PFX_REPNE    (0b1  << 7)
+
+#define SGMNT_OP(prefixes) (((prefixes) >> 4) & 0b11)
 
 #define FIELD_SR(byte)   (((byte) >> 3) & 0b11)
 #define FIELD_MOD(byte)  (((byte) >> 6) & 0b11)
@@ -181,8 +185,8 @@ enum inst_type
 	INST_SHR,
 	INST_STC,
 	INST_STD,
-	INST_STDSB,
-	INST_STDSW,
+	INST_STOSB,
+	INST_STOSW,
 	INST_STI,
 	INST_SUB,
 	INST_TEST,

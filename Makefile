@@ -5,6 +5,9 @@ BUILD_DIR := build
 
 # build/main.out
 APP := $(BUILD_DIR)/$(APP_NAME)
+OBJ := $(wildcard *.c)
+OBJ := $(OBJ:%.c=%.o)
+OBJ := $(addprefix $(BUILD_DIR)/,$(OBJ))
 
 .PHONY: all target compile clean
 
@@ -14,7 +17,7 @@ compile: clean target
 
 target: build_dir $(APP)
 
-$(APP): $(BUILD_DIR)/main.o $(BUILD_DIR)/bitmap.o
+$(APP): $(OBJ)
 	$(CC) $^ -o $@
 
 build_dir:

@@ -1,7 +1,13 @@
 #include <assert.h>
+#include <stdio.h>
 
 #include "inst.h"
 #include "bitmap.h"
+
+#define ERR_OUT_BOUNDS(offset, inst_size, image_size) \
+	fprintf(stderr, "out of image boundaries (offset: %u, "\
+	        "inst_size: %u, image_size: %u)\n", (offset),\
+	        (inst_size), (image_size))
 
 static uint calc_disp_size(uint8 * const image, uint offset);
 
@@ -45,15 +51,15 @@ struct inst_data inst_table[256] =
 	{ INST_AND,    INST_FMT_RM_REG,    FLAG_D|FLAG_W,         0, 2 }, // 0x23
 	{ INST_AND,    INST_FMT_ACC_IMM,   0,                     0, 2 }, // 0x24
 	{ INST_AND,    INST_FMT_ACC_IMM,   FLAG_W,                0, 3 }, // 0x25
-	{ INST_SGMNT,  INST_FMT_SR,        FLAG_ES,               0, 1 }, // 0x26
+	{ INST_SGMNT,  INST_FMT_NONE,      FLAG_ES,               0, 1 }, // 0x26
 	{ INST_DAA,    INST_FMT_NONE,      0,                     0, 1 }, // 0x27
-	{ INST_SBB,    INST_FMT_RM_REG,    0,                     0, 2 }, // 0x28
-	{ INST_SBB,    INST_FMT_RM_REG,    FLAG_W,                0, 2 }, // 0x29
-	{ INST_SBB,    INST_FMT_RM_REG,    FLAG_D,                0, 2 }, // 0x2A
-	{ INST_SBB,    INST_FMT_RM_REG,    FLAG_D|FLAG_W,         0, 2 }, // 0x2B
-	{ INST_SBB,    INST_FMT_ACC_IMM,   0,                     0, 2 }, // 0x2C
-	{ INST_SBB,    INST_FMT_ACC_IMM,   FLAG_W,                0, 3 }, // 0x2D
-	{ INST_SGMNT,  INST_FMT_SR,        FLAG_CS,               0, 1 }, // 0x2E
+	{ INST_SUB,    INST_FMT_RM_REG,    0,                     0, 2 }, // 0x28
+	{ INST_SUB,    INST_FMT_RM_REG,    FLAG_W,                0, 2 }, // 0x29
+	{ INST_SUB,    INST_FMT_RM_REG,    FLAG_D,                0, 2 }, // 0x2A
+	{ INST_SUB,    INST_FMT_RM_REG,    FLAG_D|FLAG_W,         0, 2 }, // 0x2B
+	{ INST_SUB,    INST_FMT_ACC_IMM,   0,                     0, 2 }, // 0x2C
+	{ INST_SUB,    INST_FMT_ACC_IMM,   FLAG_W,                0, 3 }, // 0x2D
+	{ INST_SGMNT,  INST_FMT_NONE,      FLAG_CS,               0, 1 }, // 0x2E
 	{ INST_DAS,    INST_FMT_NONE,      0,                     0, 1 }, // 0x2F
 	{ INST_XOR,    INST_FMT_RM_REG,    0,                     0, 2 }, // 0x30
 	{ INST_XOR,    INST_FMT_RM_REG,    FLAG_W,                0, 2 }, // 0x31
@@ -61,7 +67,7 @@ struct inst_data inst_table[256] =
 	{ INST_XOR,    INST_FMT_RM_REG,    FLAG_D|FLAG_W,         0, 2 }, // 0x33
 	{ INST_XOR,    INST_FMT_ACC_IMM,   0,                     0, 2 }, // 0x34
 	{ INST_XOR,    INST_FMT_ACC_IMM,   FLAG_W,                0, 3 }, // 0x35
-	{ INST_SGMNT,  INST_FMT_SR,        FLAG_SS,               0, 1 }, // 0x36
+	{ INST_SGMNT,  INST_FMT_NONE,      FLAG_SS,               0, 1 }, // 0x36
 	{ INST_AAA,    INST_FMT_NONE,      0,                     0, 1 }, // 0x37
 	{ INST_CMP,    INST_FMT_RM_REG,    0,                     0, 2 }, // 0x38
 	{ INST_CMP,    INST_FMT_RM_REG,    FLAG_W,                0, 2 }, // 0x39
@@ -69,7 +75,7 @@ struct inst_data inst_table[256] =
 	{ INST_CMP,    INST_FMT_RM_REG,    FLAG_D|FLAG_W,         0, 2 }, // 0x3B
 	{ INST_CMP,    INST_FMT_ACC_IMM,   0,                     0, 2 }, // 0x3C
 	{ INST_CMP,    INST_FMT_ACC_IMM,   FLAG_W,                0, 3 }, // 0x3D
-	{ INST_SGMNT,  INST_FMT_SR,        FLAG_DS,               0, 1 }, // 0x3E
+	{ INST_SGMNT,  INST_FMT_NONE,      FLAG_DS,               0, 1 }, // 0x3E
 	{ INST_AAS,    INST_FMT_NONE,      0,                     0, 1 }, // 0x3F
 	{ INST_INC,    INST_FMT_REG,       FLAG_W,                0, 1 }, // 0x40
 	{ INST_INC,    INST_FMT_REG,       FLAG_W,                0, 1 }, // 0x41
@@ -141,8 +147,8 @@ struct inst_data inst_table[256] =
 	{ INST_EXTD,   INST_FMT_NONE,      0,                     0, 0 }, // 0x83
 	{ INST_TEST,   INST_FMT_RM_REG,    0,                     0, 2 }, // 0x84
 	{ INST_TEST,   INST_FMT_RM_REG,    FLAG_W,                0, 2 }, // 0x85
-	{ INST_TEST,   INST_FMT_RM_REG,    FLAG_D,                0, 2 }, // 0x86
-	{ INST_TEST,   INST_FMT_RM_REG,    FLAG_D|FLAG_W,         0, 2 }, // 0x87
+	{ INST_XCHG,   INST_FMT_RM_REG,    FLAG_D,                0, 2 }, // 0x86
+	{ INST_XCHG,   INST_FMT_RM_REG,    FLAG_D|FLAG_W,         0, 2 }, // 0x87
 	{ INST_MOV,    INST_FMT_RM_REG,    0,                     0, 2 }, // 0x88
 	{ INST_MOV,    INST_FMT_RM_REG,    FLAG_W,                0, 2 }, // 0x89
 	{ INST_MOV,    INST_FMT_RM_REG,    FLAG_D,                0, 2 }, // 0x8A
@@ -177,8 +183,8 @@ struct inst_data inst_table[256] =
 	{ INST_CMPSW,  INST_FMT_NONE,      FLAG_W,                0, 1 }, // 0xA7
 	{ INST_TEST,   INST_FMT_ACC_IMM,   0,                     0, 2 }, // 0xA8
 	{ INST_TEST,   INST_FMT_ACC_IMM,   FLAG_W,                0, 3 }, // 0xA9
-	{ INST_STDSB,  INST_FMT_NONE,      0,                     0, 1 }, // 0xAA
-	{ INST_STDSW,  INST_FMT_NONE,      0,                     0, 1 }, // 0xAB
+	{ INST_STOSB,  INST_FMT_NONE,      0,                     0, 1 }, // 0xAA
+	{ INST_STOSW,  INST_FMT_NONE,      0,                     0, 1 }, // 0xAB
 	{ INST_LODSB,  INST_FMT_NONE,      0,                     0, 1 }, // 0xAC
 	{ INST_LODSW,  INST_FMT_NONE,      0,                     0, 1 }, // 0xAD
 	{ INST_SCASB,  INST_FMT_NONE,      0,                     0, 1 }, // 0xAE
@@ -237,16 +243,16 @@ struct inst_data inst_table[256] =
 	{ INST_JCXZ,   INST_FMT_JMP_SHORT, 0,                     0, 2 }, // 0xE3
 	{ INST_IN,     INST_FMT_ACC_IMM8,  0,                     0, 2 }, // 0xE4
 	{ INST_IN,     INST_FMT_ACC_IMM8,  FLAG_W,                0, 2 }, // 0xE5
-	{ INST_OUT,    INST_FMT_ACC_IMM8,  0,                     0, 2 }, // 0xE6
-	{ INST_OUT,    INST_FMT_ACC_IMM8,  FLAG_W,                0, 2 }, // 0xE7
+	{ INST_OUT,    INST_FMT_ACC_IMM8,  FLAG_D,                0, 2 }, // 0xE6
+	{ INST_OUT,    INST_FMT_ACC_IMM8,  FLAG_D|FLAG_W,         0, 2 }, // 0xE7
 	{ INST_CALL,   INST_FMT_JMP_NEAR,  0,                     0, 3 }, // 0xE8
 	{ INST_JMP,    INST_FMT_JMP_NEAR,  0,                     0, 3 }, // 0xE9
 	{ INST_JMP,    INST_FMT_JMP_FAR,   0,                     0, 5 }, // 0xEA
 	{ INST_JMP,    INST_FMT_JMP_SHORT, 0,                     0, 2 }, // 0xEB
 	{ INST_IN,     INST_FMT_ACC_DX,    0,                     0, 1 }, // 0xEC
 	{ INST_IN,     INST_FMT_ACC_DX,    FLAG_W,                0, 1 }, // 0xED
-	{ INST_OUT,    INST_FMT_ACC_DX,    0,                     0, 1 }, // 0xEE
-	{ INST_OUT,    INST_FMT_ACC_DX,    FLAG_W,                0, 1 }, // 0xEF
+	{ INST_OUT,    INST_FMT_ACC_DX,    FLAG_D,                0, 1 }, // 0xEE
+	{ INST_OUT,    INST_FMT_ACC_DX,    FLAG_D|FLAG_W,         0, 1 }, // 0xEF
 	{ INST_LOCK,   INST_FMT_NONE,      0,                     0, 1 }, // 0xF0
 	{ INST_UNK,    INST_FMT_NONE,      0,                     0, 1 }, // 0xF1
 	{ INST_REPNE,  INST_FMT_NONE,      0,                     0, 1 }, // 0xF2
@@ -465,17 +471,23 @@ int get_jmp_offset(struct inst_data data, uint8 * const image, uint size,
 
 	switch (data.fmt) {
 	case INST_FMT_JMP_SHORT:
-		if (offset + 1 > size) return -1;
+		if (offset + 1 > size) {
+			ERR_OUT_BOUNDS(offset, 2, size);
+			return -1;
+		}
 
 		tmp8        = image[offset + 1];
 		label_addr  = offset + 2;
-		label_addr += *((int8_t *)&tmp8);
+		label_addr += *((int8 *)&tmp8);
 		break;
 	case INST_FMT_JMP_NEAR:
-		if (offset + 2 > size) return -2;
+		if (offset + 2 > size) {
+			ERR_OUT_BOUNDS(offset, 3, size);
+			return -2;
+		}
 
 		tmp16      = (image[offset + 2] << 8) | image[offset + 1];
-		label_addr = offset + 3 + *((int16_t *)&tmp16);
+		label_addr = offset + 3 + *((int16 *)&tmp16);
 	default:
 		return -3;
 	}
@@ -517,10 +529,30 @@ int get_inst_data(struct inst_data *data, uint8 * const image, uint size,
 		tmp    = inst_table_extd[i][extd_op];
 	}
 
-	if (offset + tmp.size > size) return -1;
-	tmp.size = calc_disp_size(image, offset);
+	if (offset + tmp.size > size) {
+		ERR_OUT_BOUNDS(offset, tmp.size, size);
+		return -1;
+	}
 
-	if (offset + tmp.size > size) return -2;
+	// also calculate displacemnt size if instruction has form:
+	// [mod ... r/m] [disp-lo] [disp-hi]
+	switch (tmp.fmt) {
+	case INST_FMT_RM:
+	case INST_FMT_RM_V:
+	case INST_FMT_RM_SR:
+	case INST_FMT_RM_REG:
+	case INST_FMT_RM_IMM:
+	case INST_FMT_RM_ESC:
+		tmp.size += calc_disp_size(image, offset);
+	default:
+		break;
+	}
+
+	if (offset + tmp.size > size) {
+		ERR_OUT_BOUNDS(offset, tmp.size, size);
+		return -2;
+	}
+
 	*data = tmp;
 
 	return 0;
@@ -539,9 +571,16 @@ int inst_scan_image(struct inst_data * const insts, uint count,
 	// return instruction count if insts is NULL
 	if (!insts) {
 		for (count = 0; offset < size; ++count) {
-			if (get_inst_data(&data, image, size, offset) < 0)
+			if (get_inst_data(&data, image, size, offset) < 0) {
+				fprintf(stderr, "failed to get instruction data\n");
 				return -1;
-			if (data.type == INST_UNK) return -2;
+			}
+
+			if (data.type == INST_UNK) {
+				fprintf(stderr, "unknown instruction "
+				        "encountered: 0x%02X\n", image[offset]);
+				return -2;
+			}
 
 			offset += data.size;
 		}
@@ -550,17 +589,21 @@ int inst_scan_image(struct inst_data * const insts, uint count,
 	}
 
 	if (bitmap_init(&labels, size) < 0) {
+		fprintf(stderr, "failed to initialize bitmap for labels\n");
 		rc = -3;
 		goto free_and_exit;
 	}
 
 	for (i = 0; i < count && offset < size; ++i) {
 		if (get_inst_data(insts + i, image, size, offset) < 0) {
+			fprintf(stderr, "failed to get instruction data\n");
 			rc = -1;
 			goto free_and_exit;
 		}
 
 		if (insts[i].type == INST_UNK) {
+			fprintf(stderr, "unknown instruction encountered: "
+			        "0x%02X\n", image[offset]);
 			rc = -2;
 			goto free_and_exit;
 		}
@@ -582,7 +625,7 @@ int inst_scan_image(struct inst_data * const insts, uint count,
 			break;
 		// if it isn't a prefix instruction, assign accumulated prefixes
 		default:
-			insts[i].prefixes = prefixes;
+			insts[i].prefixes |= prefixes;
 			prefixes = 0;
 		}
 

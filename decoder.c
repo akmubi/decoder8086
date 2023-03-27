@@ -1,7 +1,13 @@
+#include <assert.h>
+#include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "bitmap.h"
 #include "decoder.h"
+#include "inst.h"
+
+#define W(flags) (!!((flags) & FLAG_W))
 
 static char *segregs[4] = { "es", "cs", "ss", "ds" };
 static char *regs[2][16] =
@@ -12,10 +18,148 @@ static char *regs[2][16] =
 
 static const char *gen_name(enum inst_type type);
 
+struct decode_ctx
+{
+	struct inst_data *data;
+	uint8 * const image;
+	uint size;
+	uint offset;
+};
+
+typedef void (*decode_fn)(FILE *, struct decode_ctx);
+
+static void decode_rm   (FILE *out, struct decode_ctx ctx);
+static void decode_sr   (FILE *out, struct decode_ctx ctx);
+static void decode_reg  (FILE *out, struct decode_ctx ctx);
+static void decode_v    (FILE *out, struct decode_ctx ctx);
+static void decode_imm  (FILE *out, struct decode_ctx ctx);
+static void decode_acc  (FILE *out, struct decode_ctx ctx);
+static void decode_dx   (FILE *out, struct decode_ctx ctx);
+static void decode_imm8 (FILE *out, struct decode_ctx ctx);
+static void decode_reg2 (FILE *out, struct decode_ctx ctx);
+static void decode_mem  (FILE *out, struct decode_ctx ctx);
+static void decode_addr (FILE *out, struct decode_ctx ctx);
+static void decode_naddr(FILE *out, struct decode_ctx ctx);
+static void decode_faddr(FILE *out, struct decode_ctx ctx);
+
 int decode_inst(FILE *out, struct inst_data data, uint8 * const image,
                 uint size, uint offset)
 {
-	
+	decode_fn op1 = NULL, op2 = NULL, tmp;
+	struct decode_ctx ctx = {
+		.data   = &data,
+		.image  = image,
+		.size   = size,
+		.offset = offset,
+	};
+
+	if (!out || !image) {
+		fprintf(stderr, "invalid arguments (out: %p, image: %p)\n", out,
+		        image);
+		return -1;
+	}
+
+	if (offset + data.size > size) {
+		fprintf(stderr, "out of image boundaries (offset: %u, "
+		        "inst_size: %u, image_size: %u)\n", offset, data.size,
+		        size);
+		return -2;
+	}
+
+	if (data.flags & FLAG_LB) {
+		fprintf(out, "label_%u:\n", offset);
+	}
+
+	fprintf(out, "%s", gen_name(data.type));
+
+	if (data.prefixes & PFX_FAR) fprintf(out, " far");
+
+	switch (data.fmt) {
+	case INST_FMT_RM:
+		op1 = decode_rm;
+		break;
+	case INST_FMT_RM_V:
+		op1 = decode_rm;
+		op2 = decode_v;
+		break;
+	case INST_FMT_RM_SR:
+		op1 = decode_rm;
+		op2 = decode_sr;
+		break;
+	case INST_FMT_RM_REG:
+		op1 = decode_rm;
+		op2 = decode_reg;
+		break;
+	case INST_FMT_RM_IMM:
+		op1 = decode_rm;
+		op2 = decode_imm;
+		break;
+	case INST_FMT_RM_ESC:
+		assert(0 && "not implemented");
+		break;
+	case INST_FMT_ACC_DX:
+		op1 = decode_acc;
+		op2 = decode_dx;
+		break;
+	case INST_FMT_ACC_IMM8:
+		op1 = decode_acc;
+		op2 = decode_imm8;
+		break;
+	case INST_FMT_ACC_IMM:
+		op1 = decode_acc;
+		op2 = decode_imm;
+		break;
+	case INST_FMT_ACC_REG:
+		op1 = decode_acc;
+		op2 = decode_reg2;
+		break;
+	case INST_FMT_ACC_MEM:
+		op1 = decode_acc;
+		op2 = decode_mem;
+		break;
+	case INST_FMT_REG:
+		op1 = decode_reg2;
+		break;
+	case INST_FMT_REG_IMM:
+		op1 = decode_reg2;
+		op2 = decode_imm;
+		break;
+	case INST_FMT_SR:
+		op1 = decode_sr;
+		break;
+	case INST_FMT_IMM:
+		op1 = decode_imm;
+		break;
+	case INST_FMT_JMP_SHORT:
+		op1 = decode_addr;
+		break;
+	case INST_FMT_JMP_NEAR:
+		op1 = decode_naddr;
+		break;
+	case INST_FMT_JMP_FAR:
+		op1 = decode_faddr;
+		break;
+	case INST_FMT_NONE:
+		break;
+	}
+
+	if (data.flags & FLAG_D) {
+		tmp = op1;
+		op1 = op2;
+		op2 = tmp;
+	}
+
+	if (op1) {
+		fputc(' ', out);
+		op1(out, ctx);
+	}
+
+	if (op2) {
+		fprintf(out, ", ");
+		op2(out, ctx);
+	}
+
+	return 0;
 }
 
 const char *gen_name(enum inst_type type)
@@ -108,13 +252,13 @@ const char *gen_name(enum inst_type type)
 		case INST_SBB:    return "sbb";
 		case INST_SCASB:  return "scasb";
 		case INST_SCASW:  return "scasw";
-		case INST_SGMNT:  return "sgmnt";
+		case INST_SGMNT:  return "";
 		case INST_SHL:    return "shl";
 		case INST_SHR:    return "shr";
 		case INST_STC:    return "stc";
 		case INST_STD:    return "std";
-		case INST_STDSB:  return "stdsb";
-		case INST_STDSW:  return "stdsw";
+		case INST_STOSB:  return "stosb";
+		case INST_STOSW:  return "stosw";
 		case INST_STI:    return "sti";
 		case INST_SUB:    return "sub";
 		case INST_TEST:   return "test";
@@ -124,10 +268,194 @@ const char *gen_name(enum inst_type type)
 		case INST_XOR:    return "xor";
 
 		case INST_UNK:
-		case INST_EXTD:
 			return "<invalid>";
+		case INST_EXTD:
+			assert(0 && "INST_EXTD encountered");
 	}
 
 	return "<unknown>";
+}
+
+void decode_rm(FILE *out, struct decode_ctx ctx)
+{
+	int   len;
+	char  ea_str[64];
+	char *op;
+	uint8* inst = ctx.image + ctx.offset;
+
+	uint8  w, mod, r_m;
+	int16 disp;
+
+	static char *ea_base[8] =
+	{
+		"bx + si",
+		"bx + di",
+		"bp + si",
+		"bp + di",
+		"si",
+		"di",
+		"bp",
+		"bx",
+	};
+
+	w   = W(ctx.data->flags);
+	mod = FIELD_MOD(inst[1]);
+	r_m = FIELD_RM(inst[1]);
+
+	op = regs[w][r_m];
+
+	if (mod != 0b11) {
+		disp = (inst[3] << 8) | inst[2];
+
+		if (mod == 0b00 && r_m == 0b110) {
+			len = snprintf(ea_str, sizeof(ea_str), "[%u]",
+			               disp & 0xFFFF);
+		} else {
+			// [ ea_base + d8 ]
+			if (mod == 0b01) {
+				// only low byte
+				disp &= 0x00FF;
+				// if sign bit is set then sign-extend
+				if (disp & 0x80) disp |= 0xFF00;
+
+			// [ ea_base ]
+			} else if (mod == 0b00) {
+				// no displacement
+				disp = 0;
+			}
+
+			len = snprintf(ea_str, sizeof(ea_str), "[%s",
+			               ea_base[r_m]);
+			if (disp != 0) {
+				len += snprintf(ea_str + len,
+				                sizeof(ea_str) - len, " %c %d",
+				                (disp < 0) ? '-' : '+',
+				                abs(disp));
+			}
+
+			len += snprintf(ea_str + len, sizeof(ea_str) - len,
+			                "]");
+		}
+
+		op = ea_str;
+
+		if (ctx.data->prefixes & PFX_WIDE) {
+			fprintf(out, "%s ", w ? "word" : "byte");
+		}
+
+		if (ctx.data->prefixes & PFX_SGMNT) {
+			fprintf(out, "%s:", segregs[SGMNT_OP(ctx.data->prefixes)]);
+		}
+	}
+
+	fprintf(out, "%s", op);
+}
+
+void decode_reg(FILE *out, struct decode_ctx ctx)
+{
+	uint8 w, reg;
+	uint8 *inst = ctx.image + ctx.offset;
+
+	w   = W(ctx.data->flags);
+	reg = FIELD_REG(inst[1]);
+
+	fprintf(out, "%s", regs[w][reg]);
+}
+
+void decode_sr(FILE *out, struct decode_ctx ctx)
+{
+	fprintf(out, "%s", segregs[SR_OP(ctx.data->flags)]);
+}
+
+void decode_v(FILE *out, struct decode_ctx ctx)
+{
+	fprintf(out, "%s", (ctx.data->flags & FLAG_V) ? "cl" : "1");
+}
+
+void decode_imm(FILE *out, struct decode_ctx ctx)
+{
+	uint8 lo = 0, hi = 0;
+	uint imm_size = 1;
+	uint16 imm = 0;
+	uint8 *inst = ctx.image + ctx.offset;
+
+	if (ctx.data->flags & FLAG_S) {
+		fprintf(out, "%d", inst[ctx.data->size - imm_size]);
+		return;
+	}
+
+	if (W(ctx.data->flags)) {
+		imm_size = 2;
+		hi = inst[ctx.data->size - imm_size + 1];
+	}
+
+	lo = inst[ctx.data->size - imm_size];
+	imm = (hi << 8) | lo;
+
+	fprintf(out, "%u", imm);
+}
+
+void decode_acc(FILE *out, struct decode_ctx ctx)
+{
+	fprintf(out, "%s", regs[W(ctx.data->flags)][0]);
+}
+
+void decode_dx(FILE *out, struct decode_ctx ctx)
+{
+	(void)ctx;
+	fprintf(out, "dx");
+}
+
+void decode_imm8(FILE *out, struct decode_ctx ctx)
+{
+	uint8 imm = ctx.image[ctx.offset + ctx.data->size - 1];
+	fprintf(out, "%u", imm & 0xFF);
+}
+
+void decode_reg2(FILE *out, struct decode_ctx ctx)
+{
+	uint8 w, reg;
+	uint8 *inst = ctx.image + ctx.offset;
+
+	w   = W(ctx.data->flags);
+	reg = FIELD_REG2(inst[0]);
+
+	fprintf(out, "%s", regs[w][reg]);
+}
+
+void decode_mem(FILE *out, struct decode_ctx ctx)
+{
+	uint8* inst = ctx.image + ctx.offset;
+
+	uint16 addr = (inst[2] << 8) | inst[1];
+	fprintf(out, "[%u]", addr & 0xFFFF);
+}
+
+void decode_addr(FILE *out, struct decode_ctx ctx)
+{
+	int addr = get_jmp_offset(*ctx.data, ctx.image, ctx.size, ctx.offset);
+	fprintf(out, "label_%u", addr);
+}
+
+void decode_naddr(FILE *out, struct decode_ctx ctx)
+{
+	uint16_t tmp;
+	uint8_t *inst = ctx.image + ctx.offset;
+	int16_t  addr = ctx.offset + 3;
+
+	tmp = (inst[2] << 8) | inst[1];
+	addr += *((int16_t *)&tmp);
+
+	fprintf(out, "%d", addr);
+}
+
+void decode_faddr(FILE *out, struct decode_ctx ctx)
+{
+	uint8 *inst = ctx.image + ctx.offset;
+	uint16 ip_addr, cs_addr;
+
+	ip_addr = (inst[2] << 8) | inst[1];
+	cs_addr = (inst[4] << 8) | inst[3];
+	fprintf(out, "%u:%u", cs_addr & 0xFFFF, ip_addr & 0xFFFF);
 }
 
