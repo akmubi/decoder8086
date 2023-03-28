@@ -66,7 +66,9 @@ int main(int argc, char *argv[])
 
 	fprintf(stdout, "; %s\nbits 16\n\n", argv[1]);
 
-	for (i = 0, offset = 0; i < inst_count && offset < size; ++i) {
+	for (i = 0, offset = 0;
+	     i < inst_count && offset < size;
+	     ++i, offset += insts[i].base.size) {
 		rc = decode_inst(stdout, insts + i);
 		if (rc < 0) {
 			fprintf(stderr, "failed to decode instruction "
@@ -76,17 +78,17 @@ int main(int argc, char *argv[])
 
 		switch (insts[i].base.type) {
 		case INST_SGMNT:
-			break;
+			continue;
 		case INST_LOCK:
 		case INST_REP:
 		case INST_REPNE:
 			fputc(' ', stdout);
-			break;
+			continue;
 		default:
-			fputc('\n', stdout);
+			break;
 		}
 
-		offset += insts[i].base.size;
+		fputc('\n', stdout);
 	}
 
 	return 0;

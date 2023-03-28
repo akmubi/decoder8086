@@ -196,8 +196,8 @@ struct inst_data
 {
 	enum inst_type   type;
 	enum inst_format fmt;
-	uint8            flags;
-	uint8            prefixes;
+	uint8            flags;    // w, d, s, v, sr, mo, lb
+	uint8            prefixes; // lock, sgmnt, rep, repne
 	uint8            size;
 };
 

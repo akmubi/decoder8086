@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "inst.h"
 #include "bitmap.h"
@@ -19,9 +20,6 @@
 #define EXTD(byte) (((byte) >> 3) & 0b111)
 
 #define ERR_OUT_BOUNDS(offset, inst_size, image_size) \
-	fprintf(stderr, "out of image boundaries (offset: %u, "\
-	        "inst_size: %u, image_size: %u)\n", (offset),\
-	        (inst_size), (image_size))
 
 static uint calc_disp_size(uint8 * const image, uint offset);
 static uint16 get_disp(uint8 * const image, uint offset);
@@ -491,6 +489,7 @@ int get_jmp_offset(struct inst *inst)
 	case INST_FMT_JMP_NEAR:
 		tmp16 = inst->data;
 		label_addr = inst->offset + 3 + *((int16 *)&tmp16);
+		break;
 	default:
 		return -1;
 	}
@@ -506,6 +505,8 @@ int get_inst_data(struct inst *inst, uint8 * const image, uint size,
 
 	uint8 lo = 0, hi = 0;
 	uint data_size   = 1;
+
+	memset(inst, 0, sizeof(*inst));
 
 	tmp = inst_table[image[offset]];
 	if (tmp.type == INST_EXTD) {
@@ -532,11 +533,13 @@ int get_inst_data(struct inst *inst, uint8 * const image, uint size,
 		}
 
 		extd_op = EXTD(image[offset + 1]);
-		tmp    = inst_table_extd[i][extd_op];
+		tmp     = inst_table_extd[i][extd_op];
 	}
 
 	if (offset + tmp.size > size) {
-		ERR_OUT_BOUNDS(offset, tmp.size, size);
+		fprintf(stderr, "out of image boundaries (offset: %u, "
+		        "inst_size: %u, image_size: %u)\n", offset, tmp.size,
+		        size);
 		return -1;
 	}
 
@@ -590,8 +593,10 @@ int get_inst_data(struct inst *inst, uint8 * const image, uint size,
 	case INST_FMT_REG_IMM:
 	case INST_FMT_RM_IMM:
 		if (tmp.flags & FLAG_S) {
-			inst->data = (0xFF << 8) * W(tmp.flags) |
-			             image[offset + tmp.size - data_size];
+			inst->data = image[offset + tmp.size - data_size];
+			if (inst->data & 0x80)
+				inst->data |= 0xFF00;
+			break;
 		}
 
 		if (W(tmp.flags)) {
@@ -619,7 +624,9 @@ int get_inst_data(struct inst *inst, uint8 * const image, uint size,
 	}
 
 	if (offset + tmp.size > size) {
-		ERR_OUT_BOUNDS(offset, tmp.size, size);
+		fprintf(stderr, "out of image boundaries (offset: %u, "
+		        "inst_size: %u, image_size: %u)\n", offset, tmp.size,
+		        size);
 		return -2;
 	}
 
@@ -746,7 +753,7 @@ uint16 get_disp(uint8 * const image, uint offset)
 {
 	uint   size = calc_disp_size(image, offset);
 	uint16 disp = image[offset + 2];
-	disp |= (image[offset + 2] << 8) * (size > 1);
+	disp |= (image[offset + 3] << 8) * (size > 1);
 
 	return disp;
 }

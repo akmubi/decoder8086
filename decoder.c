@@ -28,7 +28,6 @@ static void decode_imm  (FILE *out, struct inst *inst);
 static void decode_acc  (FILE *out, struct inst *inst);
 static void decode_dx   (FILE *out, struct inst *inst);
 static void decode_imm8 (FILE *out, struct inst *inst);
-static void decode_reg2 (FILE *out, struct inst *inst);
 static void decode_mem  (FILE *out, struct inst *inst);
 static void decode_addr (FILE *out, struct inst *inst);
 static void decode_naddr(FILE *out, struct inst *inst);
@@ -89,17 +88,17 @@ int decode_inst(FILE *out, struct inst *inst)
 		break;
 	case INST_FMT_ACC_REG:
 		op1 = decode_acc;
-		op2 = decode_reg2;
+		op2 = decode_reg;
 		break;
 	case INST_FMT_ACC_MEM:
 		op1 = decode_acc;
 		op2 = decode_mem;
 		break;
 	case INST_FMT_REG:
-		op1 = decode_reg2;
+		op1 = decode_reg;
 		break;
 	case INST_FMT_REG_IMM:
-		op1 = decode_reg2;
+		op1 = decode_reg;
 		op2 = decode_imm;
 		break;
 	case INST_FMT_SR:
@@ -369,16 +368,6 @@ void decode_imm8(FILE *out, struct inst *inst)
 	fprintf(out, "%u", inst->data & 0xFF);
 }
 
-void decode_reg2(FILE *out, struct inst *inst)
-{
-	uint8 w, reg;
-
-	w   = W(inst->base.flags);
-	reg = FIELD_REG(inst->fields);
-
-	fprintf(out, "%s", regs[w][reg]);
-}
-
 void decode_mem(FILE *out, struct inst *inst)
 {
 	fprintf(out, "[%u]", inst->data & 0xFFFF);
@@ -387,17 +376,21 @@ void decode_mem(FILE *out, struct inst *inst)
 void decode_addr(FILE *out, struct inst *inst)
 {
 	int addr = get_jmp_offset(inst);
-	fprintf(out, "label_%u", addr);
+	assert(addr != -1);
+
+	fprintf(out, "label_%d", addr);
 }
 
 void decode_naddr(FILE *out, struct inst *inst)
 {
-	int16_t addr = *((int16 *)&inst->data);
+	int16_t addr = get_jmp_offset(inst);
+	assert(addr != -1);
+
 	fprintf(out, "%d", addr);
 }
 
 void decode_faddr(FILE *out, struct inst *inst)
 {
-	fprintf(out, "%u:%u", inst->data_ext & 0xFFFF, inst->data & 0xFFFF);
+	fprintf(out, "%u:%u", inst->data_ext, inst->data);
 }
 
