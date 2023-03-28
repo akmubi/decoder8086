@@ -3,16 +3,16 @@
 
 #include "common.h"
 
-#define FLAG_W  (0b1  << 0)
-#define FLAG_D  (0b1  << 1)
-#define FLAG_S  (0b1  << 2)
-#define FLAG_V  (0b1  << 3)
-#define FLAG_ES (0b00 << 4)
-#define FLAG_CS (0b01 << 4)
-#define FLAG_SS (0b10 << 4)
-#define FLAG_DS (0b11 << 4)
-#define FLAG_MO (0b1  << 6) // memory only
-#define FLAG_LB (0b1  << 7) // has label
+#define F_W  (0b1  << 0)
+#define F_D  (0b1  << 1)
+#define F_S  (0b1  << 2)
+#define F_V  (0b1  << 3)
+#define F_ES (0b00 << 4)
+#define F_CS (0b01 << 4)
+#define F_SS (0b10 << 4)
+#define F_DS (0b11 << 4)
+#define F_MO (0b1  << 6) // memory only
+#define F_LB (0b1  << 7) // has label
 
 #define SR_OP(flags) (((flags) >> 4) & 0b11)
 
@@ -31,11 +31,11 @@
 
 #define SGMNT_OP(prefixes) (((prefixes) >> 4) & 0b11)
 
-#define FIELD_MOD(byte) (((byte) >>  0) & 0b11)
-#define FIELD_SR(byte)  (((byte) >>  2) & 0b11)
-#define FIELD_RM(byte)  (((byte) >>  4) & 0b111)
-#define FIELD_REG(byte) (((byte) >>  7) & 0b111)
-#define FIELD_ESC(byte) (((byte) >> 10) & 0b111111)
+#define FIELD_MOD(fields) (((fields) >>  0) & 0b11)
+#define FIELD_SR(fields)  (((fields) >>  2) & 0b11)
+#define FIELD_RM(fields)  (((fields) >>  4) & 0b111)
+#define FIELD_REG(fields) (((fields) >>  7) & 0b111)
+#define FIELD_ESC(fields) (((fields) >> 10) & 0b111111)
 
 #define MODE_MEM0  0b00
 #define MODE_MEM8  0b01
@@ -92,106 +92,31 @@ enum inst_type
 {
 	INST_UNK = 0,
 
-	INST_AAA,
-	INST_AAD,
-	INST_AAM,
-	INST_AAS,
-	INST_ADC,
-	INST_ADD,
-	INST_AND,
-	INST_CALL,
-	INST_CALLF,
-	INST_CBW,
-	INST_CLC,
-	INST_CLD,
-	INST_CLI,
-	INST_CMC,
-	INST_CMP,
-	INST_CMPSB,
-	INST_CMPSW,
-	INST_CWD,
-	INST_DAA,
-	INST_DAS,
-	INST_DEC,
-	INST_DIV,
-	INST_ESC,
-	INST_HLT,
-	INST_IDIV,
-	INST_IMUL,
-	INST_IN,
-	INST_INC,
-	INST_INT,
-	INST_INT3,
-	INST_INTO,
-	INST_IRET,
-	INST_JA,
-	INST_JAE,
-	INST_JB,
-	INST_JBE,
-	INST_JCXZ,
-	INST_JE,
-	INST_JG,
-	INST_JGE,
-	INST_JL,
-	INST_JLE,
-	INST_JMP,
-	INST_JMPF,
-	INST_JNE,
-	INST_JNO,
-	INST_JNS,
-	INST_JO,
-	INST_JP,
-	INST_JPO,
-	INST_JS,
-	INST_LAHF,
-	INST_LDS,
-	INST_LEA,
-	INST_LES,
-	INST_LOCK,
-	INST_LODSB,
-	INST_LODSW,
-	INST_LOOP,
-	INST_LOOPZ,
-	INST_LOOPNZ,
-	INST_MOV,
-	INST_MOVSB,
-	INST_MOVSW,
-	INST_MUL,
-	INST_NEG,
-	INST_NOP,
-	INST_NOT,
-	INST_OR,
-	INST_OUT,
-	INST_POP,
-	INST_POPF,
-	INST_PUSH,
-	INST_PUSHF,
-	INST_RCL,
-	INST_RCR,
-	INST_REP,
-	INST_REPNE,
-	INST_RET,
-	INST_RETF,
-	INST_ROL,
-	INST_ROR,
-	INST_SAHF,
-	INST_SAR,
-	INST_SBB,
-	INST_SCASB,
-	INST_SCASW,
-	INST_SGMNT,
-	INST_SHL,
-	INST_SHR,
-	INST_STC,
-	INST_STD,
-	INST_STOSB,
-	INST_STOSW,
-	INST_STI,
-	INST_SUB,
-	INST_TEST,
-	INST_WAIT,
-	INST_XCHG,
-	INST_XLAT,
+	INST_AAA,    INST_AAD,   INST_AAM,   INST_AAS,
+	INST_ADC,    INST_ADD,   INST_AND,   INST_CALL,
+	INST_CALLF,  INST_CBW,   INST_CLC,   INST_CLD,
+	INST_CLI,    INST_CMC,   INST_CMP,   INST_CMPSB,
+	INST_CMPSW,  INST_CWD,   INST_DAA,   INST_DAS,
+	INST_DEC,    INST_DIV,   INST_ESC,   INST_HLT,
+	INST_IDIV,   INST_IMUL,  INST_IN,    INST_INC,
+	INST_INT,    INST_INT3,  INST_INTO,  INST_IRET,
+	INST_JA,     INST_JAE,   INST_JB,    INST_JBE,
+	INST_JCXZ,   INST_JE,    INST_JG,    INST_JGE,
+	INST_JL,     INST_JLE,   INST_JMP,   INST_JMPF,
+	INST_JNE,    INST_JNO,   INST_JNS,   INST_JO,
+	INST_JP,     INST_JPO,   INST_JS,    INST_LAHF,
+	INST_LDS,    INST_LEA,   INST_LES,   INST_LOCK,
+	INST_LODSB,  INST_LODSW, INST_LOOP,  INST_LOOPZ,
+	INST_LOOPNZ, INST_MOV,   INST_MOVSB, INST_MOVSW,
+	INST_MUL,    INST_NEG,   INST_NOP,   INST_NOT,
+	INST_OR,     INST_OUT,   INST_POP,   INST_POPF,
+	INST_PUSH,   INST_PUSHF, INST_RCL,   INST_RCR,
+	INST_REP,    INST_REPNE, INST_RET,   INST_RETF,
+	INST_ROL,    INST_ROR,   INST_SAHF,  INST_SAR,
+	INST_SBB,    INST_SCASB, INST_SCASW, INST_SGMNT,
+	INST_SHL,    INST_SHR,   INST_STC,   INST_STD,
+	INST_STOSB,  INST_STOSW, INST_STI,   INST_SUB,
+	INST_TEST,   INST_WAIT,  INST_XCHG,  INST_XLAT,
 	INST_XOR,
 
 	INST_EXTD,

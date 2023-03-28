@@ -58,23 +58,21 @@ void execute_mov(struct cpu_state *state, struct inst *inst)
 
 	sr_reg    = &state->segregs[sr];
 
-
-
 	switch (inst->base.fmt) {
 	case INST_FMT_RM_REG:
 		if (mod != MODE_REG)
 			assert(0 && "not implemented");
 
-		if (inst->base.flags & FLAG_W) {
+		if (inst->base.flags & F_W) {
 			dest = rm_reg16; src = reg_reg16;
-			if (inst->base.flags & FLAG_D) {
+			if (inst->base.flags & F_D) {
 				dest = reg_reg16; src = rm_reg16;
 			}
 
 			*((uint16 *)dest) = *((uint16 *)src);
 		} else {
 			dest = rm_reg8; src = reg_reg8;
-			if (inst->base.flags & FLAG_D) {
+			if (inst->base.flags & F_D) {
 				dest = reg_reg8; src = rm_reg8;
 			}
 
@@ -85,7 +83,7 @@ void execute_mov(struct cpu_state *state, struct inst *inst)
 		
 	case INST_FMT_ACC_MEM:
 	case INST_FMT_REG_IMM:
-		if (inst->base.flags & FLAG_W) {
+		if (inst->base.flags & F_W) {
 			*reg_reg16 = inst->data;
 		} else {
 			*reg_reg8  = inst->data & 0xFF;
@@ -96,7 +94,7 @@ void execute_mov(struct cpu_state *state, struct inst *inst)
 		if (mod != MODE_REG)
 			assert(0 && "not implemented");
 
-		if (inst->base.flags & FLAG_D) {
+		if (inst->base.flags & F_D) {
 			*sr_reg = *rm_reg16;
 		} else {
 			*rm_reg16 = *sr_reg;
@@ -107,7 +105,7 @@ void execute_mov(struct cpu_state *state, struct inst *inst)
 		if (mod != MODE_REG)
 			assert(0 && "not implemented");
 
-		if (inst->base.flags & FLAG_W) {
+		if (inst->base.flags & F_W) {
 			*rm_reg16 = inst->data;
 		} else {
 			*rm_reg8  = inst->data & 0xFF;

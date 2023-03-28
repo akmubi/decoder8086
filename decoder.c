@@ -7,7 +7,7 @@
 #include "decoder.h"
 #include "inst.h"
 
-#define W(flags) (!!((flags) & FLAG_W))
+#define W(flags) (!!((flags) & F_W))
 
 static char *segregs[4] = { "es", "cs", "ss", "ds" };
 static char *regs[2][16] =
@@ -43,7 +43,7 @@ int decode_inst(FILE *out, struct inst *inst)
 		return -1;
 	}
 
-	if (inst->base.flags & FLAG_LB) {
+	if (inst->base.flags & F_LB) {
 		fprintf(out, "label_%u:\n", inst->offset);
 	}
 
@@ -120,7 +120,7 @@ int decode_inst(FILE *out, struct inst *inst)
 		break;
 	}
 
-	if (inst->base.flags & FLAG_D) {
+	if (inst->base.flags & F_D) {
 		tmp = op1;
 		op1 = op2;
 		op2 = tmp;
@@ -343,7 +343,7 @@ void decode_sr(FILE *out, struct inst *inst)
 
 void decode_v(FILE *out, struct inst *inst)
 {
-	fprintf(out, "%s", (inst->base.flags & FLAG_V) ? "cl" : "1");
+	fprintf(out, "%s", (inst->base.flags & F_V) ? "cl" : "1");
 }
 
 void decode_imm(FILE *out, struct inst *inst)
