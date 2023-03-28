@@ -19,11 +19,6 @@
 // extended opcode
 #define EXTD(byte) (((byte) >> 3) & 0b111)
 
-#define ERR_OUT_BOUNDS(offset, inst_size, image_size) \
-
-static uint calc_disp_size(uint8 * const image, uint offset);
-static uint16 get_disp(uint8 * const image, uint offset);
-
 struct inst_data inst_table[256] =
 {
 	{ INST_ADD,    INST_FMT_RM_REG,    0,            0, 2 }, // 0x00
@@ -506,11 +501,15 @@ int get_inst_data(struct inst *inst, uint8 * const image, uint size,
 	uint8 lo = 0, hi = 0;
 	uint data_size   = 1;
 
+	uint mod, rm;
+	uint disp_size   = 0;
+	uint8 *inst_raw = image + offset;
+
 	memset(inst, 0, sizeof(*inst));
 
-	tmp = inst_table[image[offset]];
+	tmp = inst_table[inst_raw[0]];
 	if (tmp.type == INST_EXTD) {
-		switch (image[offset]) {
+		switch (inst_raw[0]) {
 		case 0x80: i = 0x00; break;
 		case 0x81: i = 0x01; break;
 		case 0x82: i = 0x02; break;
@@ -528,11 +527,9 @@ int get_inst_data(struct inst *inst, uint8 * const image, uint size,
 		case 0xF7: i = 0x0E; break;
 		case 0xFE: i = 0x0F; break;
 		case 0xFF: i = 0x10; break;
-		default:
-			assert(image[offset] != image[offset]);
 		}
 
-		extd_op = EXTD(image[offset + 1]);
+		extd_op = EXTD(inst_raw[1]);
 		tmp     = inst_table_extd[i][extd_op];
 	}
 
@@ -552,10 +549,22 @@ int get_inst_data(struct inst *inst, uint8 * const image, uint size,
 	case INST_FMT_RM_REG:
 	case INST_FMT_RM_IMM:
 	case INST_FMT_RM_ESC:
-		tmp.size     += calc_disp_size(image, offset);
-		inst->disp    = get_disp(image, offset);
-		inst->fields |= (MOD(image[offset + 1]) & 0b11)  << 0;
-		inst->fields |= (RM(image[offset + 1])  & 0b111) << 4;
+		mod = MOD(inst_raw[1]);
+		rm  = RM(inst_raw[1]);
+
+		// direct address and 16-bit displacement
+		if (mod == MODE_MEM16 || (mod == MODE_MEM0 && rm == 0b110))
+			disp_size = 2;
+
+		// 8-bit displacement
+		if (mod == MODE_MEM8)
+			disp_size = 1;
+
+		tmp.size  += disp_size;
+		inst->disp = (inst_raw[3] << 8) * (disp_size > 1) | inst_raw[2];
+
+		inst->fields |= (mod & 0b11)  << 0;
+		inst->fields |= (rm  & 0b111) << 4;
 	default:
 		break;
 	}
@@ -563,10 +572,10 @@ int get_inst_data(struct inst *inst, uint8 * const image, uint size,
 	// save sr field
 	switch (tmp.fmt) {
 	case INST_FMT_SR:
-		inst->fields |= (SR(image[offset]) & 0b111) << 2;
+		inst->fields |= (SR(inst_raw[0]) & 0b111) << 2;
 		break;
 	case INST_FMT_RM_SR:
-		inst->fields |= (SR(image[offset + 1]) & 0b111) << 2;
+		inst->fields |= (SR(inst_raw[1]) & 0b111) << 2;
 		break;
 	default:
 		break;
@@ -577,10 +586,10 @@ int get_inst_data(struct inst *inst, uint8 * const image, uint size,
 	case INST_FMT_REG:
 	case INST_FMT_ACC_REG:
 	case INST_FMT_REG_IMM:
-		inst->fields |= (REG2(image[offset]) & 0b111) << 7;
+		inst->fields |= (REG2(inst_raw[0]) & 0b111) << 7;
 		break;
 	case INST_FMT_RM_REG:
-		inst->fields |= (REG(image[offset + 1]) & 0b111) << 7;
+		inst->fields |= (REG(inst_raw[1]) & 0b111) << 7;
 		break;
 	default:
 		break;
@@ -593,7 +602,7 @@ int get_inst_data(struct inst *inst, uint8 * const image, uint size,
 	case INST_FMT_REG_IMM:
 	case INST_FMT_RM_IMM:
 		if (tmp.flags & F_S) {
-			inst->data = image[offset + tmp.size - data_size];
+			inst->data = inst_raw[tmp.size - data_size];
 			if (inst->data & 0x80)
 				inst->data |= 0xFF00;
 			break;
@@ -601,23 +610,23 @@ int get_inst_data(struct inst *inst, uint8 * const image, uint size,
 
 		if (W(tmp.flags)) {
 			data_size = 2;
-			hi = image[offset + tmp.size - data_size + 1];
+			hi = inst_raw[tmp.size - data_size + 1];
 		}
 
-		lo = image[offset + tmp.size - data_size];
+		lo = inst_raw[tmp.size - data_size];
 		inst->data = (hi << 8) | lo;
 		break;
 	case INST_FMT_ACC_IMM8:
 	case INST_FMT_JMP_SHORT:
-		inst->data = image[offset + 1];
+		inst->data = inst_raw[1];
 		break;
 	case INST_FMT_ACC_MEM:
 	case INST_FMT_JMP_NEAR:
-		inst->data = (image[offset + 2] << 8) | image[offset + 1];
+		inst->data = (inst_raw[2] << 8) | inst_raw[1];
 		break;
 	case INST_FMT_JMP_FAR:
-		inst->data     = (image[offset + 2] << 8) | image[offset + 1];
-		inst->data_ext = (image[offset + 4] << 8) | image[offset + 3];
+		inst->data     = (inst_raw[2] << 8) | inst_raw[1];
+		inst->data_ext = (inst_raw[4] << 8) | inst_raw[3];
 		break;
 	default:
 		break;
@@ -728,33 +737,5 @@ free_and_exit:
 	bitmap_free(&labels);
 
 	return rc;
-}
-
-uint calc_disp_size(uint8 * const image, uint offset)
-{
-	uint8 mod, r_m;
-	uint8 *inst = image + offset;
-
-	mod = MOD(inst[1]);
-	r_m = RM(inst[1]);
-
-	// direct address and 16-bit displacement
-	if ((mod == MODE_MEM0 && r_m == 0b110) || mod == MODE_MEM16)
-		return 2;
-
-	// 8-bit displacement
-	if (mod == MODE_MEM8)
-		return 1;
-
-	return 0;
-}
-
-uint16 get_disp(uint8 * const image, uint offset)
-{
-	uint   size = calc_disp_size(image, offset);
-	uint16 disp = image[offset + 2];
-	disp |= (image[offset + 3] << 8) * (size > 1);
-
-	return disp;
 }
 

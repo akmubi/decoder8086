@@ -142,10 +142,10 @@ struct inst
 };
 
 // Calculates target offset of a jmp instruction (call, jmp, jne etc). Returns
-// offset on success and negative value if error occurred.
+// offset on success and negative if it's not a jmp instruction.
 extern int get_jmp_offset(struct inst *inst);
 
-// extracts instruction data from 'image' at given 'offset'. Returns 0 on
+// Extracts instruction data from 'image' at given 'offset'. Returns 0 on
 // success and negative value if error occurred.
 extern int get_inst(struct inst *inst, uint8 * const image, uint size,
                     uint offset);
