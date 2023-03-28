@@ -4,7 +4,7 @@
 #include "common.h"
 #include "inst.h"
 
-union general_reg
+union reg
 {
 	struct
 	{
@@ -20,23 +20,37 @@ struct cpu_state
 	{
 		struct
 		{
-			union general_reg ax;
-			union general_reg cx;
-			union general_reg dx;
-			union general_reg bx;
+			uint16 ax;
+			uint16 cx;
+			uint16 dx;
+			uint16 bx;
 			uint16 sp;
 			uint16 bp;
 			uint16 si;
 			uint16 di;
 		};
-		uint16 regs[8];
+
+		uint8  regs8[8][2];
+		uint16 regs16[8];
+	};
+
+	union
+	{
+		struct
+		{
+			uint16 es;
+			uint16 cs;
+			uint16 ss;
+			uint16 ds;
+		};
+
+		uint16 segregs[4];
 	};
 
 	uint16 ip;
 };
 
 extern int executor_init_state(struct cpu_state *state);
-extern int executor_exec(struct cpu_state *state, struct inst_data *data,
-                         uint8 * const image, uint size, uint offset);
+extern int executor_exec(struct cpu_state *state, struct inst *inst);
 
 #endif /* EXECUTOR_H */

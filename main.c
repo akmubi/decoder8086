@@ -3,6 +3,7 @@
 
 #include "inst.h"
 #include "decoder.h"
+#include "executor.h"
 
 int main(int argc, char *argv[])
 {
@@ -14,6 +15,7 @@ int main(int argc, char *argv[])
 	uint offset = 0;
 	int inst_count = 0;
 	struct inst *insts = NULL;
+	struct cpu_state state;
 
 	if (argc != 2) {
 		fprintf(stderr, "Usage: %s <assembled-file>\n", argv[0]);
@@ -64,6 +66,8 @@ int main(int argc, char *argv[])
 		return -6;
 	}
 
+	executor_init_state(&state);
+
 	fprintf(stdout, "; %s\nbits 16\n\n", argv[1]);
 
 	for (i = 0, offset = 0;
@@ -89,6 +93,15 @@ int main(int argc, char *argv[])
 		}
 
 		fputc('\n', stdout);
+
+		executor_exec(&state, insts + i);
+
+		printf("; ax: %04X cx: %04X dx: %04X bx: %04X\n", state.ax,
+		       state.cx, state.dx, state.bx);
+		printf("; sp: %04X bp: %04X si: %04X di: %04X\n", state.sp,
+		       state.bp, state.si, state.di);
+		printf("; es: %04X cs: %04X ss: %04X ds: %04X\n", state.es,
+		       state.cs, state.ss, state.ds);
 	}
 
 	return 0;

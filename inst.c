@@ -739,11 +739,11 @@ uint calc_disp_size(uint8 * const image, uint offset)
 	r_m = RM(inst[1]);
 
 	// direct address and 16-bit displacement
-	if ((mod == 0b00 && r_m == 0b110) || mod == 0b10)
+	if ((mod == MODE_MEM0 && r_m == 0b110) || mod == MODE_MEM16)
 		return 2;
 
 	// 8-bit displacement
-	if (mod == 0b01)
+	if (mod == MODE_MEM8)
 		return 1;
 
 	return 0;

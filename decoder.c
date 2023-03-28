@@ -281,20 +281,20 @@ void decode_rm(FILE *out, struct inst *inst)
 
 	op = regs[w][r_m];
 
-	if (mod != 0b11) {
-		if (mod == 0b00 && r_m == 0b110) {
+	if (mod != MODE_REG) {
+		if (mod == MODE_MEM0 && r_m == 0b110) {
 			len = snprintf(ea_str, sizeof(ea_str), "[%u]",
 			               disp & 0xFFFF);
 		} else {
 			// [ ea_base + d8 ]
-			if (mod == 0b01) {
+			if (mod == MODE_MEM8) {
 				// only low byte
 				disp &= 0x00FF;
 				// if sign bit is set then sign-extend
 				if (disp & 0x80) disp |= 0xFF00;
 
 			// [ ea_base ]
-			} else if (mod == 0b00) {
+			} else if (mod == MODE_MEM0) {
 				// no displacement
 				disp = 0;
 			}

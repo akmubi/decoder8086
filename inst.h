@@ -37,6 +37,11 @@
 #define FIELD_REG(byte) (((byte) >>  7) & 0b111)
 #define FIELD_ESC(byte) (((byte) >> 10) & 0b111111)
 
+#define MODE_MEM0  0b00
+#define MODE_MEM8  0b01
+#define MODE_MEM16 0b10
+#define MODE_REG   0b11
+
 enum inst_format
 {
 	INST_FMT_NONE,
